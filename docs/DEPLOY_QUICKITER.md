@@ -86,14 +86,37 @@ Add the following environment variables in Vercel:
 
 ## 3. Railway Deployment (API)
 
-### 3.1 Create API Service
+### 3.1 Why pnpm is Required
+
+**⚠️ IMPORTANT**: This monorepo uses **pnpm workspaces** with `workspace:*` protocol for internal package dependencies. 
+
+- **npm cannot install `workspace:*` dependencies** - it will fail with: `npm error Unsupported URL Type "workspace:" workspace:*`
+- **Only pnpm supports workspace protocol** - Railway must use pnpm, not npm
+- The repo enforces pnpm via:
+  - `package.json` → `"packageManager": "pnpm@10.26.1"`
+  - `nixpacks.toml` → Forces corepack + pnpm via Railway's Nixpacks builder
+  - `pnpm-lock.yaml` → Only pnpm lockfile (no `package-lock.json`)
+
+Railway will automatically detect and use pnpm if:
+1. `package.json` has `"packageManager": "pnpm@..."` field
+2. `nixpacks.toml` exists with corepack setup
+3. `pnpm-lock.yaml` exists in repo root
+
+If Railway still uses npm, check that `apps/api/nixpacks.toml` exists and Railway is using Nixpacks builder (not Dockerfile).
+
+### 3.2 Create API Service
 
 1. Go to Railway Dashboard → New Project
 2. Add Service → GitHub/GitLab Repository
 3. Select your repository
 4. Configure:
    - **Root Directory**: `apps/api`
-   - **Build Command**: `cd ../.. && pnpm install && pnpm --filter api build`
+   - **Build Command**: *(leave empty - nixpacks.toml handles it)*
+   - **Start Command**: *(leave empty - nixpacks.toml handles it)*
+
+**OR** if Railway doesn't detect `nixpacks.toml`:
+
+   - **Build Command**: `cd ../.. && corepack enable && corepack prepare pnpm@10.26.1 --activate && pnpm install --frozen-lockfile && pnpm --filter api build`
    - **Start Command**: `cd ../.. && pnpm --filter api start`
 
 ### 3.2 Environment Variables
@@ -159,7 +182,7 @@ Add the following environment variables in Railway:
 2. Select the same repository
 3. Configure:
    - **Root Directory**: `apps/worker`
-   - **Build Command**: `cd ../.. && pnpm install && pnpm --filter worker build`
+   - **Build Command**: `cd ../.. && corepack enable && corepack prepare pnpm@10.26.1 --activate && pnpm install --frozen-lockfile && pnpm --filter worker build`
    - **Start Command**: `cd ../.. && pnpm --filter worker start`
 
 ### 4.2 Environment Variables
@@ -279,6 +302,23 @@ curl -i "https://api.quickiter.com/debug/env" \
 ---
 
 ## 7. Troubleshooting
+
+### Build Fails: "npm error Unsupported URL Type 'workspace:'"
+
+**Symptom**: Railway build fails with `npm error Unsupported URL Type "workspace:" workspace:*`.
+
+**Cause**: Railway is using npm instead of pnpm. npm cannot install `workspace:*` dependencies.
+
+**Solution**:
+1. Verify `package.json` has `"packageManager": "pnpm@10.26.1"` field
+2. Verify `apps/api/nixpacks.toml` (or `apps/worker/nixpacks.toml`) exists
+3. Check Railway service settings → ensure "Nixpacks" builder is selected (not Dockerfile)
+4. If nixpacks.toml isn't detected, manually set build command:
+   ```
+   cd ../.. && corepack enable && corepack prepare pnpm@10.26.1 --activate && pnpm install --frozen-lockfile && pnpm --filter api build
+   ```
+5. Verify `pnpm-lock.yaml` exists in repo root (not `package-lock.json`)
+6. Ensure no `package-lock.json` files exist in the repo (they can confuse Railway)
 
 ### CORS Errors
 
