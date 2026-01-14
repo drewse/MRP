@@ -639,7 +639,7 @@ async function startWorker(): Promise<void> {
         );
 
         // Track ReviewRun for finalization
-        let reviewRun: { id: string; status: string; tenantId: string } | null = null;
+        let reviewRun: { id: string; status: string; tenantId: string; error: string | null } | null = null;
         let finalStatus: 'SUCCEEDED' | 'FAILED' | null = null;
 
         try {
@@ -765,7 +765,7 @@ async function startWorker(): Promise<void> {
           });
 
           if (!reviewRun) {
-            throw new Error(`ReviewRun ${reviewRun.id} not found after status update`);
+            throw new Error(`ReviewRun not found after status update`);
           }
 
           jobLogger.info(
@@ -999,7 +999,7 @@ async function startWorker(): Promise<void> {
                   prisma.reviewCheckResult.create({
                     data: {
                       tenantId: tenant.id,
-                      reviewRunId: reviewRun.id,
+                      reviewRunId: reviewRun!.id,
                       checkKey: result.key,
                       category: result.category,
                       status: result.status,
@@ -1436,7 +1436,7 @@ async function startWorker(): Promise<void> {
                             // Log normalization
                             jobLogger.info({
                               event: 'worker.ai.suggestions.normalized',
-                              reviewRunId: reviewRun.id,
+                              reviewRunId: reviewRun!.id,
                               checkKey: suggestion.checkKey,
                               originalType: 'array',
                               arrayLength: suggestion.suggestedFix.length,
@@ -1458,7 +1458,7 @@ async function startWorker(): Promise<void> {
                             prisma.aiSuggestion.create({
                               data: {
                                 tenantId: tenant.id,
-                                reviewRunId: reviewRun.id,
+                                reviewRunId: reviewRun!.id,
                                 checkKey: suggestion.checkKey,
                                 severity: suggestion.severity,
                                 title: suggestion.title,
@@ -1888,7 +1888,6 @@ ${checklistSections}`;
 
               if (foundRun) {
                 reviewRun = foundRun;
-                const errWithStatus = err as Error & { statusCode?: number };
                 const errorMessage = safeErrorMessage(err);
 
                 await prisma.reviewRun.update({
