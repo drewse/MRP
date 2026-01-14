@@ -1,0 +1,38 @@
+{
+  "name": "mrp-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter ./apps/* --parallel dev",
+    "api:dev": "pnpm --filter api dev",
+    "worker:dev": "pnpm --filter worker dev",
+    "portal:dev": "pnpm --filter portal dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write \"**/*.{ts,js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,js,json,md}\"",
+    "typecheck": "pnpm -r typecheck",
+    "env:diag": "tsx scripts/print-env.ts",
+    "knowledge:ingest:gold": "pnpm --filter @mrp/knowledge ingest:gold",
+    "knowledge:ingest:docs": "pnpm --filter @mrp/knowledge ingest:docs",
+    "docker:up": "docker compose -f infra/docker-compose.yml up -d",
+    "docker:down": "docker compose -f infra/docker-compose.yml down",
+    "docker:logs": "docker compose -f infra/docker-compose.yml logs -f"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0",
+    "eslint": "^8.56.0",
+    "prettier": "^3.2.4",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3",
+    "@mrp/config": "workspace:*"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
+

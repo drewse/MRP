@@ -1,0 +1,52 @@
+{
+  "object_kind": "merge_request",
+  "event_type": "merge_request",
+  "user": {
+    "id": 1,
+    "name": "John Doe",
+    "username": "johndoe",
+    "email": "john@example.com"
+  },
+  "project": {
+    "id": 123,
+    "name": "my-awesome-project",
+    "description": "",
+    "web_url": "https://gitlab.com/group/my-awesome-project",
+    "path_with_namespace": "group/my-awesome-project",
+    "path": "my-awesome-project",
+    "namespace": {
+      "id": 10,
+      "name": "group",
+      "path": "group",
+      "kind": "group"
+    }
+  },
+  "object_attributes": {
+    "id": 99,
+    "iid": 1,
+    "title": "Add new feature",
+    "description": "This MR adds a new feature to the project",
+    "state": "opened",
+    "merged_at": null,
+    "closed_at": null,
+    "target_branch": "main",
+    "source_branch": "feature/new-feature",
+    "action": "open",
+    "url": "https://gitlab.com/group/my-awesome-project/merge_requests/1",
+    "web_url": "https://gitlab.com/group/my-awesome-project/merge_requests/1",
+    "last_commit": {
+      "id": "abc123def456",
+      "sha": "abc123def456",
+      "message": "Add new feature implementation",
+      "timestamp": "2024-01-15T10:00:00Z",
+      "url": "https://gitlab.com/group/my-awesome-project/commit/abc123def456",
+      "author": {
+        "name": "John Doe",
+        "email": "john@example.com"
+      }
+    },
+    "target_project_id": 123,
+    "source_project_id": 123
+  }
+}
+

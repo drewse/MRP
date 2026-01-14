@@ -1,0 +1,42 @@
+{
+  "name": "@mrp/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "dotenv -e ../../.env -- prisma migrate dev --name",
+    "prisma:studio": "dotenv -e ../../.env -- prisma studio",
+    "prisma:db:push": "dotenv -e ../../.env -- prisma db push",
+    "prisma:db:push:force": "dotenv -e ../../.env -- prisma db push --accept-data-loss",
+    "test:connection": "dotenv -e ../../.env -- tsx test-connection.ts",
+    "seed:check-configs": "dotenv -e ../../.env -- tsx src/seed-check-configs.ts",
+    "seed:ai-configs": "dotenv -e ../../.env -- tsx src/seed-ai-configs.ts"
+  },
+  "dependencies": {
+    "@mrp/core": "workspace:*",
+    "@mrp/checks": "workspace:*",
+    "@prisma/client": "^5.19.1",
+    "dotenv": "^16.4.1",
+    "pino": "^9.3.1",
+    "pino-pretty": "^11.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "dotenv-cli": "^7.4.4",
+    "prisma": "^5.19.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.3.3"
+  }
+}

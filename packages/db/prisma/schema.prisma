@@ -1,0 +1,240 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  repositories Repository[]
+  mergeRequests MergeRequest[]
+  reviewRuns ReviewRun[]
+  reviewCheckResults ReviewCheckResult[]
+  postedComments PostedComment[]
+  knowledgeSources KnowledgeSource[]
+  checkConfigs CheckConfig[]
+  tenantAiConfig TenantAiConfig?
+  aiSuggestions AiSuggestion[]
+  tenantSettings TenantSettings?
+  uploads Upload[]
+
+  @@map("tenants")
+}
+
+model Repository {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider      String   // e.g. "gitlab"
+  providerRepoId String  // GitLab project ID
+  namespace     String
+  name          String
+  defaultBranch String   @default("main")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  mergeRequests MergeRequest[]
+
+  // Unique constraint is tenant-scoped: same provider+repoId can exist in different tenants
+  @@unique([tenantId, provider, providerRepoId])
+  @@map("repositories")
+}
+
+model MergeRequest {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  repositoryId  String
+  repository    Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  iid           Int
+  title         String
+  author        String
+  sourceBranch  String
+  targetBranch  String
+  state         String
+  webUrl        String
+  lastSeenSha   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  reviewRuns    ReviewRun[]
+
+  // Unique constraint: repositoryId is already tenant-scoped via Repository, so we only need repositoryId + iid
+  // But we add tenantId for explicit tenant isolation and faster queries
+  @@unique([tenantId, repositoryId, iid])
+  @@map("merge_requests")
+}
+
+model ReviewRun {
+  id             String   @id @default(cuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  mergeRequestId String
+  mergeRequest   MergeRequest @relation(fields: [mergeRequestId], references: [id], onDelete: Cascade)
+  headSha        String
+  status         String   // QUEUED | RUNNING | SUCCEEDED | FAILED
+  score          Int?
+  summary        String?
+  error          String?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime @default(now())
+  checkResults   ReviewCheckResult[]
+  postedComments PostedComment[]
+  aiSuggestions AiSuggestion[]
+
+  @@map("review_runs")
+}
+
+model ReviewCheckResult {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reviewRunId   String
+  reviewRun     ReviewRun @relation(fields: [reviewRunId], references: [id], onDelete: Cascade)
+  checkKey      String
+  category      String
+  status        String   // PASS | FAIL | NA
+  severity      String   // INFO | WARN | BLOCKER
+  message       String
+  filePath      String?
+  lineStart     Int?
+  lineEnd       Int?
+  evidence      String?
+  suggestion    String?
+  createdAt     DateTime @default(now())
+
+  @@map("review_check_results")
+}
+
+model PostedComment {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reviewRunId   String
+  reviewRun     ReviewRun @relation(fields: [reviewRunId], references: [id], onDelete: Cascade)
+  provider      String   // "gitlab"
+  providerId    String   // comment/discussion id
+  type          String   // SUMMARY | INLINE
+  filePath      String?
+  line          Int?
+  body          String
+  aiIncluded    Boolean  @default(false)
+  aiSummaryHash String?
+  createdAt     DateTime @default(now())
+
+  @@map("posted_comments")
+}
+
+model KnowledgeSource {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  type        String   // "GOLD_MR" | "DOC"
+  provider    String   // "GITLAB" | "LOCAL"
+  providerId  String?  // GitLab MR ID, file path, etc.
+  title       String
+  sourceUrl   String?
+  contentText String   @db.Text
+  contentHash String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Unique constraints for idempotency
+  // Note: providerId can be null, so we use a partial unique index
+  @@unique([tenantId, contentHash])
+  @@map("knowledge_sources")
+}
+
+model CheckConfig {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  checkKey        String
+  enabled         Boolean  @default(true)
+  severityOverride String? // PASS | WARN | FAIL (overrides default)
+  thresholds      Json?    // Optional thresholds (e.g., {"maxLines": 400, "maxSize": 8000})
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Unique constraint: one config per tenant per check
+  @@unique([tenantId, checkKey])
+  @@map("check_configs")
+}
+
+model TenantAiConfig {
+  id              String   @id @default(cuid())
+  tenantId        String   @unique
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  enabled         Boolean  @default(false)
+  provider        String   @default("OPENAI") // "OPENAI" | "ANTHROPIC" (future)
+  model           String   @default("gpt-4o-mini")
+  maxSuggestions  Int      @default(5)
+  maxPromptChars  Int      @default(6000)
+  maxTotalDiffBytes Int    @default(40000)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("tenant_ai_configs")
+}
+
+model AiSuggestion {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reviewRunId   String
+  reviewRun     ReviewRun @relation(fields: [reviewRunId], references: [id], onDelete: Cascade)
+  checkKey      String
+  severity      String   // "WARN" | "FAIL"
+  title         String
+  rationale     String
+  suggestedFix  String   @db.Text
+  files         Json     // Array<{ path: string, lineStart?: number, lineEnd?: number }>
+  createdAt     DateTime @default(now())
+
+  @@map("ai_suggestions")
+}
+
+model TenantSettings {
+  id                  String   @id @default(cuid())
+  tenantId            String   @unique
+  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  allowedExtensions   String[] @default(["pdf", "docx", "txt", "md", "csv", "json"])
+  maxFileSizeBytes    Int      @default(26214400) // 25MB
+  allowedMimePrefixes  String[] @default(["text/", "application/"])
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("tenant_settings")
+}
+
+model Upload {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  objectKey       String   @unique
+  originalFileName String
+  sizeBytes       Int
+  mimeType        String
+  status          UploadStatus @default(PRESIGNED)
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("uploads")
+}
+
+enum UploadStatus {
+  PRESIGNED
+  UPLOADED
+  FAILED
+}

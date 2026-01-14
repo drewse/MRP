@@ -1,0 +1,35 @@
+{
+  "name": "@mrp/knowledge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "ingest:gold": "dotenv -e ../../.env -- tsx src/cli-ingest-gold.ts",
+    "ingest:docs": "dotenv -e ../../.env -- tsx src/cli-ingest-docs.ts"
+  },
+  "dependencies": {
+    "@mrp/core": "workspace:*",
+    "@mrp/config": "workspace:*",
+    "@mrp/db": "workspace:*",
+    "@mrp/gitlab": "workspace:*",
+    "@mrp/checks": "workspace:*",
+    "dotenv": "^16.4.1",
+    "pino": "^9.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  }
+}
+
