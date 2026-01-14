@@ -48,3 +48,9 @@ prisma/migrations/
 .env.*
 !.env.example
 
+
+.env
+.env.*
+*.bak
+!.env.example
+
