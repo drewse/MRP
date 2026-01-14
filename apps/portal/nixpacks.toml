@@ -11,6 +11,7 @@ nixPkgs = ["nodejs_22"]
 cmds = [
   "cd ../..",
   "npm install -g pnpm@10.26.1",
+  "pnpm -v",
   "pnpm install --frozen-lockfile"
 ]
 
