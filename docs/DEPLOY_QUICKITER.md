@@ -94,13 +94,15 @@ Add the following environment variables in Vercel:
 - **Only pnpm supports workspace protocol** - Railway must use pnpm, not npm
 - The repo enforces pnpm via:
   - `package.json` → `"packageManager": "pnpm@10.26.1"`
-  - `nixpacks.toml` → Forces corepack + pnpm via Railway's Nixpacks builder
+  - `nixpacks.toml` → Installs pnpm via `npm install -g pnpm@10.26.1` (avoids corepack keyid errors on Railway)
   - `pnpm-lock.yaml` → Only pnpm lockfile (no `package-lock.json`)
 
 Railway will automatically detect and use pnpm if:
 1. `package.json` has `"packageManager": "pnpm@..."` field
-2. `nixpacks.toml` exists with corepack setup
+2. `nixpacks.toml` exists with pnpm installation via npm (not corepack)
 3. `pnpm-lock.yaml` exists in repo root
+
+**Note**: We use `npm install -g pnpm@10.26.1` instead of corepack because corepack signature verification fails on Railway with "Cannot find matching keyid" errors.
 
 If Railway still uses npm, check that `apps/api/nixpacks.toml` exists and Railway is using Nixpacks builder (not Dockerfile).
 
@@ -116,7 +118,7 @@ If Railway still uses npm, check that `apps/api/nixpacks.toml` exists and Railwa
 
 **OR** if Railway doesn't detect `nixpacks.toml`:
 
-   - **Build Command**: `cd ../.. && corepack enable && corepack prepare pnpm@10.26.1 --activate && pnpm install --frozen-lockfile && pnpm --filter api build`
+   - **Build Command**: `cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter api build`
    - **Start Command**: `cd ../.. && pnpm --filter api start`
 
 ### 3.2 Environment Variables
@@ -182,7 +184,7 @@ Add the following environment variables in Railway:
 2. Select the same repository
 3. Configure:
    - **Root Directory**: `apps/worker`
-   - **Build Command**: `cd ../.. && corepack enable && corepack prepare pnpm@10.26.1 --activate && pnpm install --frozen-lockfile && pnpm --filter worker build`
+   - **Build Command**: `cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter worker build`
    - **Start Command**: `cd ../.. && pnpm --filter worker start`
 
 ### 4.2 Environment Variables
@@ -248,6 +250,30 @@ https://api.quickiter.com/webhooks/gitlab
 ---
 
 ## 6. Verification Steps
+
+### 6.0 Verify pnpm is Used in Builds
+
+**How to confirm Railway is using pnpm**:
+
+1. Check Railway build logs for:
+   - `npm install -g pnpm@10.26.1` (should appear in install phase)
+   - `pnpm -v` output showing `10.26.1` (verification step)
+   - `pnpm install --frozen-lockfile` (not `npm install`)
+   - `pnpm --filter <service> build` (build command)
+
+2. **If logs show `npm install` instead of `pnpm install`**:
+   - Railway is not detecting `nixpacks.toml`
+   - Check service root directory is set correctly (e.g., `apps/api`)
+   - Verify `apps/<service>/nixpacks.toml` exists in the repo
+   - Clear Railway build cache and redeploy
+   - Manually set build command in Railway settings (see troubleshooting)
+
+3. **If logs show corepack errors**:
+   - Remove corepack from nixpacks.toml
+   - Use `npm install -g pnpm@10.26.1` instead
+   - Ensure PATH export is included: `export PATH="$(npm bin -g):$PATH"`
+
+## 6. Verification Steps (API/Worker/Portal)
 
 ### 6.1 API Health Check
 
@@ -315,10 +341,37 @@ curl -i "https://api.quickiter.com/debug/env" \
 3. Check Railway service settings → ensure "Nixpacks" builder is selected (not Dockerfile)
 4. If nixpacks.toml isn't detected, manually set build command:
    ```
-   cd ../.. && corepack enable && corepack prepare pnpm@10.26.1 --activate && pnpm install --frozen-lockfile && pnpm --filter api build
+   cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter api build
    ```
 5. Verify `pnpm-lock.yaml` exists in repo root (not `package-lock.json`)
 6. Ensure no `package-lock.json` files exist in the repo (they can confuse Railway)
+
+### Build Fails: "pnpm: command not found"
+
+**Symptom**: Railway build fails with `pnpm: command not found` or `command not found: pnpm`.
+
+**Cause**: pnpm is not in PATH after global installation, or nixpacks.toml isn't being used.
+
+**Solution**:
+1. Verify `apps/<service>/nixpacks.toml` exists and includes `export PATH="$(npm bin -g):$PATH"` after `npm install -g pnpm@10.26.1`
+2. Check Railway build logs - you should see `pnpm -v` output showing version 10.26.1
+3. If nixpacks.toml isn't detected, manually add PATH export to build command:
+   ```
+   cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm -v && pnpm install --frozen-lockfile && pnpm --filter api build
+   ```
+4. Clear Railway build cache and redeploy
+
+### Build Fails: "Cannot find matching keyid" (Corepack Error)
+
+**Symptom**: Railway build fails with corepack error: `Cannot find matching keyid ... corepack.cjs ...`.
+
+**Cause**: Corepack signature verification is failing on Railway.
+
+**Solution**:
+1. **Do not use corepack** - ensure nixpacks.toml uses `npm install -g pnpm@10.26.1` instead
+2. Remove any `corepack enable` or `corepack prepare` commands from nixpacks.toml
+3. Verify install phase uses: `npm install -g pnpm@10.26.1` followed by `export PATH="$(npm bin -g):$PATH"`
+4. Redeploy after fixing nixpacks.toml
 
 ### CORS Errors
 

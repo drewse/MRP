@@ -36,7 +36,7 @@ The MRP monorepo uses **pnpm workspaces** with `workspace:*` protocol. Railway m
 
 **OR** if Railway doesn't detect `nixpacks.toml`:
 
-- **Build Command**: `cd ../.. && corepack enable && corepack prepare pnpm@10.26.1 --activate && pnpm install --frozen-lockfile && pnpm --filter api build`
+- **Build Command**: `cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter api build`
 - **Start Command**: `cd ../.. && pnpm --filter api start`
 
 #### Environment Variables
@@ -82,7 +82,7 @@ curl https://api.quickiter.com/health
 
 **OR** if Railway doesn't detect `nixpacks.toml`:
 
-- **Build Command**: `cd ../.. && corepack enable && corepack prepare pnpm@10.26.1 --activate && pnpm install --frozen-lockfile && pnpm --filter worker build`
+- **Build Command**: `cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter worker build`
 - **Start Command**: `cd ../.. && pnpm --filter worker start`
 
 #### Environment Variables
@@ -121,7 +121,7 @@ Check worker logs in Railway dashboard. You should see:
 
 **OR** if Railway doesn't detect `nixpacks.toml`:
 
-- **Build Command**: `cd ../.. && corepack enable && corepack prepare pnpm@10.26.1 --activate && pnpm install --frozen-lockfile && pnpm --filter portal build`
+- **Build Command**: `cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter portal build`
 - **Start Command**: `cd ../.. && pnpm --filter portal start`
 
 #### Environment Variables
@@ -146,14 +146,17 @@ After deployment, verify:
 Railway will:
 
 1. **Detect `nixpacks.toml`** in `apps/<service>/` directory
-2. **Run setup phase**: Install Node.js 22 + corepack
+2. **Run setup phase**: Install Node.js 22
 3. **Run install phase**: 
    - `cd ../..` (to repo root)
-   - `corepack enable`
-   - `corepack prepare pnpm@10.26.1 --activate`
-   - `pnpm install --frozen-lockfile`
+   - `npm install -g pnpm@10.26.1` (install pnpm globally via npm)
+   - `export PATH="$(npm bin -g):$PATH"` (ensure pnpm is in PATH)
+   - `pnpm -v` (verify pnpm is available)
+   - `pnpm install --frozen-lockfile` (install dependencies)
 4. **Run build phase**: `pnpm --filter <service> build`
 5. **Start service**: `pnpm --filter <service> start`
+
+**Note**: We use `npm install -g pnpm@10.26.1` instead of corepack because corepack signature verification fails on Railway with "Cannot find matching keyid" errors.
 
 ---
 
@@ -171,12 +174,12 @@ Railway will:
 
 ### Error: "pnpm: command not found"
 
-**Cause**: corepack not enabled or pnpm not activated.
+**Cause**: pnpm not installed or not in PATH.
 
 **Solution**:
-1. Ensure `nixpacks.toml` includes `corepack enable` and `corepack prepare pnpm@10.26.1 --activate`
-2. Check Railway build logs to confirm corepack steps ran
-3. Manually add to build command: `corepack enable && corepack prepare pnpm@10.26.1 --activate`
+1. Ensure `nixpacks.toml` includes `npm install -g pnpm@10.26.1` and `export PATH="$(npm bin -g):$PATH"`
+2. Check Railway build logs to confirm `pnpm -v` shows version 10.26.1
+3. Manually add to build command: `npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm -v`
 
 ### Error: "Cannot find module '@mrp/...'"
 
@@ -216,7 +219,7 @@ If Railway doesn't detect `nixpacks.toml`, use these commands:
 
 **Build**:
 ```bash
-cd ../.. && corepack enable && corepack prepare pnpm@10.26.1 --activate && pnpm install --frozen-lockfile && pnpm --filter api build
+cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter api build
 ```
 
 **Start**:
@@ -228,7 +231,7 @@ cd ../.. && pnpm --filter api start
 
 **Build**:
 ```bash
-cd ../.. && corepack enable && corepack prepare pnpm@10.26.1 --activate && pnpm install --frozen-lockfile && pnpm --filter worker build
+cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter worker build
 ```
 
 **Start**:
@@ -240,7 +243,7 @@ cd ../.. && pnpm --filter worker start
 
 **Build**:
 ```bash
-cd ../.. && corepack enable && corepack prepare pnpm@10.26.1 --activate && pnpm install --frozen-lockfile && pnpm --filter portal build
+cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter portal build
 ```
 
 **Start**:
@@ -255,7 +258,7 @@ cd ../.. && pnpm --filter portal start
 - **Node.js**: `22.x` (required)
 - **pnpm**: `10.26.1` (enforced via `packageManager` field)
 
-Railway will use Node.js 22 via nixpacks. pnpm version is enforced by corepack.
+Railway will use Node.js 22 via nixpacks. pnpm version 10.26.1 is installed via `npm install -g pnpm@10.26.1` (not corepack, to avoid signature verification errors).
 
 ---
 
@@ -329,15 +332,15 @@ Monitor Railway worker logs for:
 ### Railway Build/Start Commands
 
 **API**:
-- Build: `cd ../.. && corepack enable && corepack prepare pnpm@10.26.1 --activate && pnpm install --frozen-lockfile && pnpm --filter api build`
+- Build: `cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter api build`
 - Start: `cd ../.. && pnpm --filter api start`
 
 **Worker**:
-- Build: `cd ../.. && corepack enable && corepack prepare pnpm@10.26.1 --activate && pnpm install --frozen-lockfile && pnpm --filter worker build`
+- Build: `cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter worker build`
 - Start: `cd ../.. && pnpm --filter worker start`
 
 **Portal**:
-- Build: `cd ../.. && corepack enable && corepack prepare pnpm@10.26.1 --activate && pnpm install --frozen-lockfile && pnpm --filter portal build`
+- Build: `cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter portal build`
 - Start: `cd ../.. && pnpm --filter portal start`
 
 ### Key Files
