@@ -6,14 +6,15 @@
 # npm cannot install workspace:* dependencies - only pnpm can.
 # Railway must use pnpm, not npm, or builds will fail with:
 # "npm error Unsupported URL Type 'workspace:' workspace:*"
+#
+# NOTE: We install pnpm via npm (not corepack) to avoid corepack keyid errors on Railway.
 
 [phases.setup]
-nixPkgs = ["nodejs_22", "corepack"]
+nixPkgs = ["nodejs_22"]
 
 [phases.install]
 cmds = [
-  "corepack enable",
-  "corepack prepare pnpm@10.26.1 --activate",
+  "npm install -g pnpm@10.26.1",
   "pnpm install --frozen-lockfile"
 ]
 

@@ -1,15 +1,16 @@
 # Nixpacks configuration for Portal service on Railway
 # This ensures pnpm is used and builds from the monorepo root
 # Note: Portal can also be deployed on Vercel (recommended)
+#
+# NOTE: We install pnpm via npm (not corepack) to avoid corepack keyid errors on Railway.
 
 [phases.setup]
-nixPkgs = ["nodejs_22", "corepack"]
+nixPkgs = ["nodejs_22"]
 
 [phases.install]
 cmds = [
   "cd ../..",
-  "corepack enable",
-  "corepack prepare pnpm@10.26.1 --activate",
+  "npm install -g pnpm@10.26.1",
   "pnpm install --frozen-lockfile"
 ]
 
