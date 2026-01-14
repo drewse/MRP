@@ -43,3 +43,8 @@ prisma/migrations/
 # Docker
 .docker/
 
+
+.env
+.env.*
+!.env.example
+
