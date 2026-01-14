@@ -1,0 +1,22 @@
+# Nixpacks configuration for Railway deployment
+# This file ensures pnpm is used for all services
+# Railway will use service-specific nixpacks.toml files if they exist
+
+[phases.setup]
+nixPkgs = ["nodejs_22", "corepack"]
+
+[phases.install]
+cmds = [
+  "corepack enable",
+  "corepack prepare pnpm@10.26.1 --activate",
+  "pnpm install --frozen-lockfile"
+]
+
+[phases.build]
+cmds = [
+  "echo 'Build command should be set per-service in Railway settings'"
+]
+
+[start]
+cmd = "echo 'Start command should be set per-service in Railway settings'"
+

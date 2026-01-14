@@ -12,6 +12,10 @@ build/
 .env
 .env.local
 .env.*.local
+.env*
+*.bak
+.env.bak
+!.env.example
 
 # Logs
 logs/
@@ -42,15 +46,3 @@ prisma/migrations/
 
 # Docker
 .docker/
-
-
-.env
-.env.*
-!.env.example
-
-
-.env
-.env.*
-*.bak
-!.env.example
-

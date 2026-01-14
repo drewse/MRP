@@ -1,0 +1,23 @@
+# Nixpacks configuration for Worker service on Railway
+# This ensures pnpm is used and builds from the monorepo root
+
+[phases.setup]
+nixPkgs = ["nodejs_22", "corepack"]
+
+[phases.install]
+cmds = [
+  "cd ../..",
+  "corepack enable",
+  "corepack prepare pnpm@10.26.1 --activate",
+  "pnpm install --frozen-lockfile"
+]
+
+[phases.build]
+cmds = [
+  "cd ../..",
+  "pnpm --filter worker build"
+]
+
+[start]
+cmd = "cd ../.. && pnpm --filter worker start"
+
