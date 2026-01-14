@@ -1,0 +1,14 @@
+{
+  "providers": ["node"],
+  "steps": {
+    "install": {
+      "commands": [
+        "corepack enable",
+        "corepack prepare pnpm@10.26.1 --activate",
+        "pnpm -C /app install --frozen-lockfile"
+      ]
+    },
+    "build": { "commands": [] }
+  }
+}
+
