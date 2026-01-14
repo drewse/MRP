@@ -14,10 +14,7 @@ nixPkgs = ["nodejs_22"]
 
 [phases.install]
 cmds = [
-  "npm install -g pnpm@10.26.1",
-  "export PATH=\"$(npm bin -g):$PATH\"",
-  "pnpm -v",
-  "pnpm install --frozen-lockfile"
+  "npm i -g pnpm@10.26.1 && PNPM_BIN=\"$(npm bin -g)/pnpm\" && \"$PNPM_BIN\" -v && \"$PNPM_BIN\" install --frozen-lockfile"
 ]
 
 [phases.build]

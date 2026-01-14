@@ -9,19 +9,14 @@ nixPkgs = ["nodejs_22"]
 
 [phases.install]
 cmds = [
-  "cd ../..",
-  "npm install -g pnpm@10.26.1",
-  "export PATH=\"$(npm bin -g):$PATH\"",
-  "pnpm -v",
-  "pnpm install --frozen-lockfile"
+  "cd ../.. && npm i -g pnpm@10.26.1 && PNPM_BIN=\"$(npm bin -g)/pnpm\" && \"$PNPM_BIN\" -v && \"$PNPM_BIN\" install --frozen-lockfile"
 ]
 
 [phases.build]
 cmds = [
-  "cd ../..",
-  "pnpm --filter portal build"
+  "cd ../.. && PNPM_BIN=\"$(npm bin -g)/pnpm\" && \"$PNPM_BIN\" --filter portal build"
 ]
 
 [start]
-cmd = "cd ../.. && pnpm --filter portal start"
+cmd = "cd ../.. && PNPM_BIN=\"$(npm bin -g)/pnpm\" && \"$PNPM_BIN\" --filter portal start"
 

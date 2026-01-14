@@ -18,8 +18,10 @@ This guide covers deploying the MRP monorepo services (API, Worker, Portal) to R
 The MRP monorepo uses **pnpm workspaces** with `workspace:*` protocol. Railway must use **pnpm** (not npm) to install dependencies. This is enforced via:
 
 1. **`package.json`** - `"packageManager": "pnpm@10.26.1"` field
-2. **`nixpacks.toml`** - Per-service build configuration using corepack + pnpm
+2. **`nixpacks.toml`** - Per-service build configuration installing pnpm via npm (not corepack)
 3. **Node.js 22** - Required version
+
+**Important**: We avoid Corepack because it fails on Railway with "Cannot find matching keyid" signature verification errors. Instead, we install pnpm globally via `npm i -g pnpm@10.26.1` and execute it using the absolute path `$(npm bin -g)/pnpm` within the same command to ensure PATH persistence across Nixpacks layers.
 
 ---
 
@@ -219,36 +221,36 @@ If Railway doesn't detect `nixpacks.toml`, use these commands:
 
 **Build**:
 ```bash
-cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter api build
+cd ../.. && npm i -g pnpm@10.26.1 && PNPM_BIN="$(npm bin -g)/pnpm" && "$PNPM_BIN" install --frozen-lockfile && "$PNPM_BIN" --filter api build
 ```
 
 **Start**:
 ```bash
-cd ../.. && pnpm --filter api start
+cd ../.. && PNPM_BIN="$(npm bin -g)/pnpm" && "$PNPM_BIN" --filter api start
 ```
 
 ### Worker
 
 **Build**:
 ```bash
-cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter worker build
+cd ../.. && npm i -g pnpm@10.26.1 && PNPM_BIN="$(npm bin -g)/pnpm" && "$PNPM_BIN" install --frozen-lockfile && "$PNPM_BIN" --filter worker build
 ```
 
 **Start**:
 ```bash
-cd ../.. && pnpm --filter worker start
+cd ../.. && PNPM_BIN="$(npm bin -g)/pnpm" && "$PNPM_BIN" --filter worker start
 ```
 
 ### Portal
 
 **Build**:
 ```bash
-cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter portal build
+cd ../.. && npm i -g pnpm@10.26.1 && PNPM_BIN="$(npm bin -g)/pnpm" && "$PNPM_BIN" install --frozen-lockfile && "$PNPM_BIN" --filter portal build
 ```
 
 **Start**:
 ```bash
-cd ../.. && pnpm --filter portal start
+cd ../.. && PNPM_BIN="$(npm bin -g)/pnpm" && "$PNPM_BIN" --filter portal start
 ```
 
 ---
@@ -332,16 +334,16 @@ Monitor Railway worker logs for:
 ### Railway Build/Start Commands
 
 **API**:
-- Build: `cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter api build`
-- Start: `cd ../.. && pnpm --filter api start`
+- Build: `cd ../.. && npm i -g pnpm@10.26.1 && PNPM_BIN="$(npm bin -g)/pnpm" && "$PNPM_BIN" install --frozen-lockfile && "$PNPM_BIN" --filter api build`
+- Start: `cd ../.. && PNPM_BIN="$(npm bin -g)/pnpm" && "$PNPM_BIN" --filter api start`
 
 **Worker**:
-- Build: `cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter worker build`
-- Start: `cd ../.. && pnpm --filter worker start`
+- Build: `cd ../.. && npm i -g pnpm@10.26.1 && PNPM_BIN="$(npm bin -g)/pnpm" && "$PNPM_BIN" install --frozen-lockfile && "$PNPM_BIN" --filter worker build`
+- Start: `cd ../.. && PNPM_BIN="$(npm bin -g)/pnpm" && "$PNPM_BIN" --filter worker start`
 
 **Portal**:
-- Build: `cd ../.. && npm install -g pnpm@10.26.1 && export PATH="$(npm bin -g):$PATH" && pnpm install --frozen-lockfile && pnpm --filter portal build`
-- Start: `cd ../.. && pnpm --filter portal start`
+- Build: `cd ../.. && npm i -g pnpm@10.26.1 && PNPM_BIN="$(npm bin -g)/pnpm" && "$PNPM_BIN" install --frozen-lockfile && "$PNPM_BIN" --filter portal build`
+- Start: `cd ../.. && PNPM_BIN="$(npm bin -g)/pnpm" && "$PNPM_BIN" --filter portal start`
 
 ### Key Files
 
