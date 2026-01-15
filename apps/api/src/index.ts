@@ -1400,6 +1400,7 @@ async function startServer(): Promise<void> {
       summary: reviewRun.summary,
       error: reviewRun.error,
       createdAt: reviewRun.createdAt.toISOString(),
+      startedAt: reviewRun.startedAt?.toISOString() || null,
       finishedAt: reviewRun.finishedAt?.toISOString() || null,
       mergeRequest: {
         id: reviewRun.mergeRequest.id,

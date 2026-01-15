@@ -142,7 +142,7 @@ export default function ReviewsPage() {
       // Extract project path (everything before /merge_requests)
       const pathBeforeMr = urlObj.pathname.split('/merge_requests')[0];
       // Remove leading slash and trailing /- if present
-      let projectPath = pathBeforeMr.replace(/^\/+/, '').replace(/\/-$/, '');
+      const projectPath = pathBeforeMr.replace(/^\/+/, '').replace(/\/-$/, '');
       
       // Check if projectPath is numeric (projectId)
       const numericProjectId = /^\d+$/.test(projectPath);

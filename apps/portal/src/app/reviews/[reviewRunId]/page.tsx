@@ -472,7 +472,7 @@ export default function ReviewDetailPage() {
       abortControllerRef.current?.abort();
       abortControllerRef.current = null;
 
-      const result = await api.retryReviewRun(reviewRun.id);
+      await api.retryReviewRun(reviewRun.id);
 
       // Reload the review run to see updated status
       // The page will automatically start polling when status becomes QUEUED

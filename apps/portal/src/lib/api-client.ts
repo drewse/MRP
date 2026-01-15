@@ -320,6 +320,7 @@ export const api = {
     summary: string | null;
     error: string | null;
     createdAt: string;
+    startedAt: string | null;
     finishedAt: string | null;
     mergeRequest: {
       id: string;
