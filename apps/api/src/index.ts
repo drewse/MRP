@@ -3,11 +3,11 @@ import { initEnv, getEnvDiagnostics, validateRequiredEnv, requireEnv } from '@mr
 
 const { repoRoot, envFilePath, loaded, keysLoaded } = initEnv();
 
-// Startup assertion: .env must be loaded
+// .env file is optional (for local dev); env vars can come from platform (Railway, etc.)
 if (!loaded) {
-  console.error(`❌ FATAL: Failed to load .env file from: ${envFilePath}`);
-  console.error(`Please ensure the .env file exists at: ${envFilePath}`);
-  process.exit(1);
+  console.warn(`⚠️  WARNING: .env file not found at: ${envFilePath}`);
+  console.warn(`   Continuing with environment variables from process.env (platform-provided)`);
+  console.warn(`   Required environment variables will be validated below.`);
 }
 
 // Log env loading diagnostics
