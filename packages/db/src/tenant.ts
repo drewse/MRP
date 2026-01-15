@@ -39,6 +39,10 @@ export async function getOrCreateTenantBySlug(slug: string): Promise<Tenant> {
       { event: 'tenant.resolved', tenantId: tenant.id, slug: tenant.slug, action: 'reused' },
       'Tenant found (reused existing)'
     );
+    
+    // Ensure TenantAiConfig exists (idempotent - safe to run multiple times)
+    await ensureTenantAiConfig(tenant.id);
+    
     return tenant;
   }
 
@@ -58,6 +62,54 @@ export async function getOrCreateTenantBySlug(slug: string): Promise<Tenant> {
     'Tenant created successfully'
   );
 
+  // Auto-provision TenantAiConfig for new tenant (enabled by default)
+  await ensureTenantAiConfig(tenant.id);
+
   return tenant;
+}
+
+/**
+ * Ensure TenantAiConfig exists for a tenant (idempotent)
+ * Creates with enabled=true, model="gpt-4o-mini" if missing
+ * Safe to call multiple times - uses upsert
+ * @param tenantId - Tenant ID (CUID)
+ */
+async function ensureTenantAiConfig(tenantId: string): Promise<void> {
+  try {
+    // Check if config already exists
+    const existing = await prisma.tenantAiConfig.findUnique({
+      where: { tenantId },
+    });
+
+    if (existing) {
+      // Already exists, no action needed (idempotent)
+      return;
+    }
+
+    // Create with defaults: enabled=true, model="gpt-4o-mini"
+    await prisma.tenantAiConfig.create({
+      data: {
+        tenantId,
+        enabled: true,
+        model: 'gpt-4o-mini',
+        provider: 'OPENAI',
+        maxSuggestions: 5,
+        maxPromptChars: 6000,
+        maxTotalDiffBytes: 40000,
+      },
+    });
+
+    logger.info(
+      { event: 'tenant.ai_config.auto_provisioned', tenantId },
+      'Auto-provisioned TenantAiConfig with enabled=true, model=gpt-4o-mini'
+    );
+  } catch (error) {
+    // Log error but don't throw - tenant lookup should still succeed
+    const err = error as Error;
+    logger.warn(
+      { event: 'tenant.ai_config.auto_provision_failed', tenantId, error: err.message },
+      'Failed to auto-provision TenantAiConfig (non-fatal)'
+    );
+  }
 }
 
