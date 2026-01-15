@@ -81,6 +81,8 @@ model ReviewRun {
   mergeRequest   MergeRequest @relation(fields: [mergeRequestId], references: [id], onDelete: Cascade)
   headSha        String
   status         String   // QUEUED | RUNNING | SUCCEEDED | FAILED
+  phase          String?  // FETCHING | CHECKS | AI | POSTING | FINALIZING
+  progressMessage String?
   score          Int?
   summary        String?
   error          String?

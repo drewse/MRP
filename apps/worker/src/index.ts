@@ -1,5 +1,5 @@
 // Initialize environment FIRST (before any other imports that might read process.env)
-import { initEnv, getEnvDiagnostics, validateRequiredEnv, requireEnv } from '@mrp/config';
+import { initEnv, getEnvDiagnostics, validateRequiredEnv, requireEnvMultiple } from '@mrp/config';
 
 const { repoRoot, envFilePath, loaded, keysLoaded } = initEnv();
 
@@ -462,9 +462,9 @@ async function startWorker(): Promise<void> {
   // Log structured env diagnostics
   logEnvDiagnostics();
   
-  // Assert critical vars are non-empty
+  // Assert critical vars are non-empty (fail fast with clear error message)
   try {
-    requireEnv('REDIS_URL');
+    requireEnvMultiple(['REDIS_URL']);
     // DATABASE_URL is optional for worker (only needed for DB features)
     // GITLAB_TOKEN is optional (only needed for posting comments)
   } catch (error) {
@@ -641,6 +641,8 @@ async function startWorker(): Promise<void> {
         // Track ReviewRun for finalization
         let reviewRun: { id: string; status: string; tenantId: string; error: string | null } | null = null;
         let finalStatus: 'SUCCEEDED' | 'FAILED' | null = null;
+        // Track current phase for error context
+        let currentPhase: string | null = null;
 
         try {
           // Resolve tenant
@@ -749,6 +751,8 @@ async function startWorker(): Promise<void> {
               status: 'RUNNING',
               startedAt: new Date(),
               error: null, // Clear previous error on retry
+              phase: null, // Reset phase
+              progressMessage: null, // Reset progress message
             },
           });
 
@@ -891,6 +895,16 @@ async function startWorker(): Promise<void> {
                 token: gitlabToken,
               });
 
+              // Update phase to FETCHING
+              currentPhase = 'FETCHING';
+              await prisma.reviewRun.update({
+                where: { id: reviewRun.id },
+                data: {
+                  phase: 'FETCHING',
+                  progressMessage: 'Fetching merge request changes from GitLab...',
+                },
+              });
+
               // Fetch MR changes
               jobLogger.info(
                 {
@@ -954,6 +968,16 @@ async function startWorker(): Promise<void> {
                 },
                 'Tenant check configs loaded'
               );
+
+              // Update phase to CHECKS
+              currentPhase = 'CHECKS';
+              await prisma.reviewRun.update({
+                where: { id: reviewRun.id },
+                data: {
+                  phase: 'CHECKS',
+                  progressMessage: `Running ${enabledCount} deterministic checks on ${changes.length} file(s)...`,
+                },
+              });
 
               // Run checks
               jobLogger.info(
@@ -1157,6 +1181,16 @@ async function startWorker(): Promise<void> {
                 }
               }
 
+              // Update phase to FINALIZING
+              currentPhase = 'FINALIZING';
+              await prisma.reviewRun.update({
+                where: { id: reviewRun.id },
+                data: {
+                  phase: 'FINALIZING',
+                  progressMessage: 'Finalizing review...',
+                },
+              });
+
               // Update ReviewRun
               await prisma.reviewRun.update({
                 where: { id: reviewRun.id },
@@ -1165,6 +1199,8 @@ async function startWorker(): Promise<void> {
                   finishedAt: new Date(),
                   score,
                   summary: `${checkResults.length} checks: ${passCount} PASS / ${warnCount} WARN / ${failCount} FAIL`,
+                  phase: null, // Clear phase on completion
+                  progressMessage: null, // Clear progress message on completion
                 },
               });
 
@@ -1253,6 +1289,16 @@ async function startWorker(): Promise<void> {
                         .slice(0, aiConfig.maxSuggestions);
                       
                       if (failingResults.length > 0) {
+                        // Update phase to AI
+                        currentPhase = 'AI';
+                        await prisma.reviewRun.update({
+                          where: { id: reviewRun.id },
+                          data: {
+                            phase: 'AI',
+                            progressMessage: `Generating AI suggestions for ${failingResults.length} failing check(s)...`,
+                          },
+                        });
+
                         jobLogger.info(
                           {
                             event: 'worker.ai.suggestions.start',
@@ -1574,6 +1620,16 @@ async function startWorker(): Promise<void> {
                 },
               });
 
+              // Update phase to POSTING
+              currentPhase = 'POSTING';
+              await prisma.reviewRun.update({
+                where: { id: reviewRun.id },
+                data: {
+                  phase: 'POSTING',
+                  progressMessage: 'Posting review comments to GitLab...',
+                },
+              });
+
               // Build comment body with categorized checklist results
               const checklistSections = formatCheckResultsForComment(checkResults);
               
@@ -1735,9 +1791,13 @@ ${checklistSections}`;
               
               // Check if this is a GitLab API error (401/403/404) - these are non-retryable
               const isAuthError = err.statusCode === 401 || err.statusCode === 403 || err.statusCode === 404;
-              const errorMessage = isAuthError 
-                ? `GitLab API error (${err.statusCode}): ${err.message}`
-                : `Failed to process review: ${err.message}`;
+              const safeError = safeErrorMessage(err);
+              // Include phase in error message if available
+              const errorMessage = currentPhase
+                ? `[${currentPhase}] ${isAuthError ? `GitLab API error (${err.statusCode}): ${safeError}` : safeError}`
+                : (isAuthError 
+                  ? `GitLab API error (${err.statusCode}): ${safeError}`
+                  : safeError);
               
               jobLogger.error(
                 {
@@ -1746,6 +1806,8 @@ ${checklistSections}`;
                   projectId,
                   mrIid,
                   error: err.message,
+                  safeError,
+                  phase: currentPhase,
                   statusCode: err.statusCode,
                   isAuthError,
                   stack: err.stack,
@@ -1754,12 +1816,16 @@ ${checklistSections}`;
               );
 
               // Update ReviewRun to FAILED
+              // NOTE: Partial results (check results, AI suggestions) are preserved
+              // They were already persisted before the error occurred
               await prisma.reviewRun.update({
                 where: { id: reviewRun.id },
                 data: {
                   status: 'FAILED',
                   finishedAt: new Date(),
                   error: errorMessage,
+                  phase: null, // Clear phase on failure
+                  progressMessage: null, // Clear progress message on failure
                 },
               });
 
@@ -1832,10 +1898,13 @@ ${checklistSections}`;
             try {
               const errWithStatus = err as Error & { statusCode?: number };
               const isAuthError = errWithStatus.statusCode === 401 || errWithStatus.statusCode === 403 || errWithStatus.statusCode === 404;
-              const errorMessage = safeErrorMessage(errWithStatus);
-              const finalErrorMessage = isAuthError 
-                ? `GitLab API error (${errWithStatus.statusCode}): ${errorMessage}`
-                : errorMessage;
+              const safeError = safeErrorMessage(errWithStatus);
+              // Include phase in error message if available
+              const finalErrorMessage = currentPhase
+                ? `[${currentPhase}] ${isAuthError ? `GitLab API error (${errWithStatus.statusCode}): ${safeError}` : safeError}`
+                : (isAuthError 
+                  ? `GitLab API error (${errWithStatus.statusCode}): ${safeError}`
+                  : safeError);
 
               await prisma.reviewRun.update({
                 where: { id: reviewRun.id },
@@ -1843,6 +1912,8 @@ ${checklistSections}`;
                   status: 'FAILED',
                   finishedAt: new Date(),
                   error: finalErrorMessage,
+                  phase: null, // Clear phase on failure
+                  progressMessage: null, // Clear progress message on failure
                 },
               });
 
@@ -1888,7 +1959,11 @@ ${checklistSections}`;
 
               if (foundRun) {
                 reviewRun = foundRun;
-                const errorMessage = safeErrorMessage(err);
+                const safeError = safeErrorMessage(err);
+                // Include phase in error message if available (fallback lookup may not have phase context)
+                const errorMessage = currentPhase
+                  ? `[${currentPhase}] ${safeError}`
+                  : safeError;
 
                 await prisma.reviewRun.update({
                   where: { id: foundRun.id },
@@ -1896,6 +1971,8 @@ ${checklistSections}`;
                     status: 'FAILED',
                     finishedAt: new Date(),
                     error: errorMessage,
+                    phase: null, // Clear phase on failure
+                    progressMessage: null, // Clear progress message on failure
                   },
                 });
 
@@ -1955,12 +2032,19 @@ ${checklistSections}`;
                   '⚠️ ReviewRun not finalized, forcing FAILED status'
                 );
 
+                // Include phase in error message if available
+                const terminationError = currentPhase
+                  ? `[${currentPhase}] Unexpected termination: job completed without setting final status`
+                  : 'Unexpected termination: job completed without setting final status';
+
                 await prisma.reviewRun.update({
                   where: { id: reviewRun.id },
                   data: {
                     status: 'FAILED',
                     finishedAt: new Date(),
-                    error: 'Unexpected termination: job completed without setting final status',
+                    error: terminationError,
+                    phase: null, // Clear phase on failure
+                    progressMessage: null, // Clear progress message on failure
                   },
                 });
 

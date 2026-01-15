@@ -104,8 +104,22 @@ export interface GitLabUser {
   avatar_url: string;
 }
 
+export interface GitLabProject {
+  id: number;
+  name: string;
+  path: string;
+  path_with_namespace: string;
+  namespace: {
+    id: number;
+    name: string;
+    path: string;
+  };
+  default_branch?: string;
+}
+
 export interface GitLabClient {
   getUser(): Promise<GitLabUser>;
+  getProject(projectIdOrPath: string): Promise<GitLabProject>;
   getMergeRequest(projectId: string, mrIid: number): Promise<GitLabMergeRequest>;
   getMergeRequestApprovals(projectId: string, mrIid: number): Promise<GitLabApprovalState | null>;
   createMergeRequestNote(projectId: string, mrIid: number, body: string): Promise<GitLabNote>;
@@ -345,6 +359,15 @@ export function createGitLabClient(config: GitLabClientConfig): GitLabClient {
       return request<GitLabUser>('GET', path);
     },
     
+    /**
+     * Get project by ID or path
+     * GET /api/v4/projects/:id_or_path
+     */
+    async getProject(projectIdOrPath: string): Promise<GitLabProject> {
+      const path = `/api/v4/projects/${encodeURIComponent(projectIdOrPath)}`;
+      return request<GitLabProject>('GET', path);
+    },
+
     /**
      * Get merge request details
      * GET /api/v4/projects/:id/merge_requests/:iid

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { api, getStoredConfig } from '@/lib/api-client';
 
 interface MergeRequest {
@@ -29,11 +30,15 @@ interface MergeRequest {
 }
 
 export default function ReviewsPage() {
+  const router = useRouter();
   const [mergeRequests, setMergeRequests] = useState<MergeRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [mrUrl, setMrUrl] = useState('');
+  const [processingUrl, setProcessingUrl] = useState(false);
+  const [urlError, setUrlError] = useState<string | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isMountedRef = useRef(true);
@@ -110,6 +115,117 @@ export default function ReviewsPage() {
     loadData(abortControllerRef.current.signal);
   };
 
+  /**
+   * Parse GitLab MR URL to extract project path/ID and MR IID
+   * Supports formats:
+   * - https://gitlab.com/group/subgroup/repo/-/merge_requests/123
+   * - https://gitlab.com/group/subgroup/repo/merge_requests/123
+   * - https://gitlab.com/group/subgroup/repo/-/merge_requests/123/diffs
+   * - https://gitlab.com/group/subgroup/repo/-/merge_requests/123#note_456
+   */
+  const parseGitLabMrUrl = (url: string): { projectPath: string | null; projectId: string | null; mrIid: number | null } => {
+    try {
+      const urlObj = new URL(url);
+      
+      // Extract MR IID from path
+      // Pattern: /group/subgroup/repo/-/merge_requests/123 or /group/subgroup/repo/merge_requests/123
+      const mrMatch = urlObj.pathname.match(/\/merge_requests\/(\d+)/);
+      if (!mrMatch) {
+        return { projectPath: null, projectId: null, mrIid: null };
+      }
+      
+      const mrIid = parseInt(mrMatch[1], 10);
+      if (isNaN(mrIid) || mrIid < 1) {
+        return { projectPath: null, projectId: null, mrIid: null };
+      }
+      
+      // Extract project path (everything before /merge_requests)
+      const pathBeforeMr = urlObj.pathname.split('/merge_requests')[0];
+      // Remove leading slash and trailing /- if present
+      let projectPath = pathBeforeMr.replace(/^\/+/, '').replace(/\/-$/, '');
+      
+      // Check if projectPath is numeric (projectId)
+      const numericProjectId = /^\d+$/.test(projectPath);
+      
+      if (numericProjectId) {
+        return { projectPath: null, projectId: projectPath, mrIid };
+      } else if (projectPath) {
+        return { projectPath, projectId: null, mrIid };
+      }
+      
+      return { projectPath: null, projectId: null, mrIid: null };
+    } catch {
+      return { projectPath: null, projectId: null, mrIid: null };
+    }
+  };
+
+  const handlePasteMrUrl = async () => {
+    if (!mrUrl.trim()) {
+      setUrlError('Please enter a GitLab MR URL');
+      return;
+    }
+
+    setProcessingUrl(true);
+    setUrlError(null);
+    setError(null);
+
+    try {
+      const config = getStoredConfig();
+      if (!config) {
+        setUrlError('Please configure your connection on the Connect page first.');
+        setProcessingUrl(false);
+        return;
+      }
+
+      // Parse URL
+      const { projectPath, projectId, mrIid } = parseGitLabMrUrl(mrUrl.trim());
+      
+      if (!mrIid) {
+        setUrlError('Invalid GitLab MR URL. Could not extract MR number.');
+        setProcessingUrl(false);
+        return;
+      }
+
+      if (!projectPath && !projectId) {
+        setUrlError('Invalid GitLab MR URL. Could not extract project path or ID.');
+        setProcessingUrl(false);
+        return;
+      }
+
+      // Resolve project path to projectId if needed
+      let finalProjectId = projectId;
+      if (projectPath && !projectId) {
+        try {
+          const resolved = await api.resolveGitLabProject(projectPath);
+          finalProjectId = resolved.projectId;
+        } catch (err: any) {
+          setUrlError(`Failed to resolve project: ${err.message || 'Unknown error'}`);
+          setProcessingUrl(false);
+          return;
+        }
+      }
+
+      if (!finalProjectId) {
+        setUrlError('Could not determine project ID');
+        setProcessingUrl(false);
+        return;
+      }
+
+      // Trigger review
+      const result = await api.triggerReview({
+        projectId: finalProjectId,
+        mrIid,
+      });
+
+      // Navigate to review detail page
+      router.push(`/reviews/${result.reviewRunId}`);
+    } catch (err: any) {
+      console.error('Failed to trigger review from URL:', err);
+      setUrlError(err.message || 'Failed to trigger review. Please try again.');
+      setProcessingUrl(false);
+    }
+  };
+
   const formatDate = (dateString: string): string => {
     return new Date(dateString).toLocaleString();
   };
@@ -163,6 +279,61 @@ export default function ReviewsPage() {
         >
           {refreshing ? 'Refreshing...' : 'Refresh'}
         </button>
+      </div>
+
+      {/* Paste GitLab MR URL Section */}
+      <div style={{ 
+        marginBottom: '2rem', 
+        padding: '1rem', 
+        background: 'white', 
+        borderRadius: '8px', 
+        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)' 
+      }}>
+        <h2 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '1.1rem' }}>Paste GitLab MR URL</h2>
+        <p style={{ marginBottom: '1rem', color: '#666', fontSize: '0.9rem' }}>
+          Paste a GitLab merge request URL to trigger a review
+        </p>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'stretch' }}>
+          <input
+            type="text"
+            value={mrUrl}
+            onChange={(e) => setMrUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !processingUrl) {
+                handlePasteMrUrl();
+              }
+            }}
+            placeholder="https://gitlab.com/group/subgroup/repo/-/merge_requests/123"
+            disabled={processingUrl}
+            style={{
+              flex: 1,
+              padding: '0.5rem',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              fontSize: '0.9rem',
+            }}
+          />
+          <button
+            onClick={handlePasteMrUrl}
+            disabled={processingUrl || !mrUrl.trim()}
+            style={{
+              padding: '0.5rem 1rem',
+              backgroundColor: processingUrl || !mrUrl.trim() ? '#ccc' : '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: processingUrl || !mrUrl.trim() ? 'not-allowed' : 'pointer',
+              opacity: processingUrl || !mrUrl.trim() ? 0.6 : 1,
+            }}
+          >
+            {processingUrl ? 'Processing...' : 'Trigger Review'}
+          </button>
+        </div>
+        {urlError && (
+          <div style={{ marginTop: '0.5rem', color: '#d32f2f', fontSize: '0.85rem' }}>
+            {urlError}
+          </div>
+        )}
       </div>
 
       {lastUpdated && (

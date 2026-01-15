@@ -30,6 +30,24 @@ export default function ConnectPage() {
       const defaultApiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 
         (isProduction ? '' : 'http://localhost:3001');
       
+      // Runtime assertion: detect if portal is pointing at itself
+      if (typeof window !== 'undefined' && defaultApiUrl) {
+        const currentOrigin = window.location.origin;
+        const apiUrlOrigin = new URL(defaultApiUrl, window.location.href).origin;
+        if (apiUrlOrigin === currentOrigin) {
+          console.error(
+            '⚠️ PORTAL CONFIGURATION ERROR: API base URL points to portal itself!',
+            { apiBaseUrl: defaultApiUrl, portalOrigin: currentOrigin }
+          );
+          // In development, show a visible warning
+          if (process.env.NODE_ENV === 'development') {
+            console.warn(
+              'Portal is configured to point at itself. API should run on port 3001, portal on 3000.'
+            );
+          }
+        }
+      }
+      
       setApiBaseUrl(defaultApiUrl);
       setTenantSlug(process.env.NEXT_PUBLIC_DEFAULT_TENANT_SLUG || '');
       setAdminToken(process.env.NEXT_PUBLIC_PORTAL_ADMIN_TOKEN || '');
@@ -128,7 +146,31 @@ export default function ConnectPage() {
       }
 
       // IMPORTANT: the generator must be iterated unconditionally here
-      const effectiveApiBaseUrl = currentApiBaseUrl || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+      // Default to localhost:3001 (API port), not 3000 (portal port)
+      const isProduction = process.env.NODE_ENV === 'production';
+      const effectiveApiBaseUrl = currentApiBaseUrl || process.env.NEXT_PUBLIC_API_BASE_URL || 
+        (isProduction ? 'https://api.quickiter.com' : 'http://localhost:3001');
+      
+      // Runtime assertion: detect if portal is pointing at itself
+      if (typeof window !== 'undefined' && effectiveApiBaseUrl) {
+        const currentOrigin = window.location.origin;
+        try {
+          const apiUrlOrigin = new URL(effectiveApiBaseUrl, window.location.href).origin;
+          if (apiUrlOrigin === currentOrigin) {
+            console.error(
+              '⚠️ PORTAL CONFIGURATION ERROR: API base URL points to portal itself!',
+              { apiBaseUrl: effectiveApiBaseUrl, portalOrigin: currentOrigin }
+            );
+            if (process.env.NODE_ENV === 'development') {
+              console.warn(
+                'Portal is configured to point at itself. API should run on port 3001, portal on 3000.'
+              );
+            }
+          }
+        } catch (e) {
+          // Invalid URL, will be caught by self-test
+        }
+      }
       
       // Dev-only: log that we're starting the generator
       if (process.env.NODE_ENV === 'development') {
@@ -198,7 +240,10 @@ export default function ConnectPage() {
       return;
     }
 
-    const effectiveApiBaseUrl = apiBaseUrl || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+    // Default to localhost:3001 (API port), not 3000 (portal port)
+    const isProduction = process.env.NODE_ENV === 'production';
+    const effectiveApiBaseUrl = apiBaseUrl || process.env.NEXT_PUBLIC_API_BASE_URL || 
+      (isProduction ? 'https://api.quickiter.com' : 'http://localhost:3001');
     const text = formatSelfTestResults(selfTestResults, effectiveApiBaseUrl, tenantSlug);
 
     try {

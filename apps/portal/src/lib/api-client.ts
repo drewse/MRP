@@ -46,7 +46,28 @@ export function storeConfig(config: ConnectionConfig): void {
 export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
     const stored = localStorage.getItem(STORAGE_KEYS.API_BASE_URL);
-    if (stored) return stored;
+    if (stored) {
+      // Runtime assertion: detect if portal is pointing at itself
+      const currentOrigin = window.location.origin;
+      try {
+        const apiUrlOrigin = new URL(stored, window.location.href).origin;
+        if (apiUrlOrigin === currentOrigin) {
+          console.error(
+            '⚠️ PORTAL CONFIGURATION ERROR: API base URL points to portal itself!',
+            { apiBaseUrl: stored, portalOrigin: currentOrigin }
+          );
+          // In development, show a visible warning
+          if (process.env.NODE_ENV === 'development') {
+            console.warn(
+              'Portal is configured to point at itself. API should run on port 3001, portal on 3000.'
+            );
+          }
+        }
+      } catch (e) {
+        // Invalid URL, will be caught by apiRequest
+      }
+      return stored;
+    }
   }
   
   // In production build, require NEXT_PUBLIC_API_BASE_URL to be set
@@ -61,7 +82,32 @@ export function getApiBaseUrl(): string {
   }
   
   // Development or production with env var set
-  return envApiBaseUrl || 'https://api.quickiter.com';
+  // Default to localhost:3001 in development (API port), not 3000 (portal port)
+  const defaultUrl = envApiBaseUrl || (isProduction ? 'https://api.quickiter.com' : 'http://localhost:3001');
+  
+  // Runtime assertion: detect if portal is pointing at itself
+  if (typeof window !== 'undefined' && defaultUrl) {
+    const currentOrigin = window.location.origin;
+    try {
+      const apiUrlOrigin = new URL(defaultUrl, window.location.href).origin;
+      if (apiUrlOrigin === currentOrigin) {
+        console.error(
+          '⚠️ PORTAL CONFIGURATION ERROR: API base URL points to portal itself!',
+          { apiBaseUrl: defaultUrl, portalOrigin: currentOrigin }
+        );
+        // In development, show a visible warning
+        if (process.env.NODE_ENV === 'development') {
+          console.warn(
+            'Portal is configured to point at itself. API should run on port 3001, portal on 3000.'
+          );
+        }
+      }
+    } catch (e) {
+      // Invalid URL, will be caught by apiRequest
+    }
+  }
+  
+  return defaultUrl;
 }
 
 function getTenantSlug(): string {
@@ -268,6 +314,8 @@ export const api = {
   async getReviewRun(reviewRunId: string, signal?: AbortSignal): Promise<{
     id: string;
     status: string;
+    phase: string | null;
+    progressMessage: string | null;
     score: number | null;
     summary: string | null;
     error: string | null;
@@ -292,6 +340,7 @@ export const api = {
       checkKey: string;
       category: string;
       status: string;
+      severity: string;
       message: string | null;
       filePath: string | null;
       startLine: number | null;
@@ -335,6 +384,28 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(params.headSha ? { headSha: params.headSha } : {}),
     });
+  },
+
+  async retryReviewRun(reviewRunId: string): Promise<{
+    ok: boolean;
+    reviewRunId: string;
+    jobId: string;
+    status: string;
+  }> {
+    return apiRequest(`/review-runs/${reviewRunId}/retry`, {
+      method: 'POST',
+    });
+  },
+
+  async resolveGitLabProject(projectPath: string): Promise<{
+    projectId: string;
+    name: string;
+    path: string;
+    pathWithNamespace: string;
+    namespace: string;
+  }> {
+    const encodedPath = encodeURIComponent(projectPath);
+    return apiRequest(`/gitlab/resolve-project?path=${encodedPath}`);
   },
 
   async getMergeRequest(projectId: string | number, mrIid: number, signal?: AbortSignal): Promise<{

@@ -1,5 +1,5 @@
 // Initialize environment FIRST (before any other imports that might read process.env)
-import { initEnv, getEnvDiagnostics, validateRequiredEnv, requireEnv } from '@mrp/config';
+import { initEnv, getEnvDiagnostics, validateRequiredEnv, requireEnvMultiple } from '@mrp/config';
 
 const { repoRoot, envFilePath, loaded, keysLoaded } = initEnv();
 
@@ -326,18 +326,20 @@ async function startServer(): Promise<void> {
   // Log structured env diagnostics
   logEnvDiagnostics();
   
-  // Assert critical vars are non-empty
+  // Assert critical vars are non-empty (fail fast with clear error message)
   try {
-    requireEnv('DATABASE_URL');
-    requireEnv('REDIS_URL');
-    requireEnv('GITLAB_TOKEN');
-    requireEnv('GITLAB_WEBHOOK_SECRET');
-    requireEnv('APP_PUBLIC_URL');
-    requireEnv('STORAGE_PROVIDER');
-    requireEnv('STORAGE_REGION');
-    requireEnv('STORAGE_BUCKET');
-    requireEnv('STORAGE_ACCESS_KEY_ID');
-    requireEnv('STORAGE_SECRET_ACCESS_KEY');
+    requireEnvMultiple([
+      'DATABASE_URL',
+      'REDIS_URL',
+      'GITLAB_TOKEN',
+      'GITLAB_WEBHOOK_SECRET',
+      'APP_PUBLIC_URL',
+      'STORAGE_PROVIDER',
+      'STORAGE_REGION',
+      'STORAGE_BUCKET',
+      'STORAGE_ACCESS_KEY_ID',
+      'STORAGE_SECRET_ACCESS_KEY',
+    ]);
     
     // Validate storage configuration
     validateStorageConfig();
@@ -1347,6 +1349,7 @@ async function startServer(): Promise<void> {
       checkKey: result.checkKey,
       category: result.category,
       status: result.status,
+      severity: result.severity,
       message: result.message || null,
       filePath: result.filePath || null,
       startLine: result.lineStart || null,
@@ -1391,6 +1394,8 @@ async function startServer(): Promise<void> {
     return {
       id: reviewRun.id,
       status: reviewRun.status,
+      phase: reviewRun.phase,
+      progressMessage: reviewRun.progressMessage,
       score: reviewRun.score,
       summary: reviewRun.summary,
       error: reviewRun.error,
@@ -1556,6 +1561,150 @@ async function startServer(): Promise<void> {
       return reply.code(500).send({
         error: 'Internal server error',
         message: 'Failed to fetch merge request',
+      });
+    }
+  });
+
+  // Retry failed review run endpoint (protected by portal auth)
+  fastify.post<{
+    Params: {
+      reviewRunId: string;
+    };
+  }>('/review-runs/:reviewRunId/retry', {
+    preHandler: portalAuthPreHandler,
+  }, async (request, reply) => {
+    const logger = request.log;
+    const tenantSlugHeader = request.headers['x-mrp-tenant-slug'] as string | undefined;
+    const tenantSlug = tenantSlugHeader || process.env.DEFAULT_TENANT_SLUG || 'dev';
+    const tenant = await getOrCreateTenantBySlug(tenantSlug);
+    const reviewRunId = request.params.reviewRunId;
+
+    logger.info(
+      {
+        event: 'review_run.retry.start',
+        tenantId: tenant.id,
+        tenantSlug: tenant.slug,
+        reviewRunId,
+      },
+      'Retry review run request'
+    );
+
+    try {
+      // Fetch review run with merge request and repository
+      const reviewRun = await prisma.reviewRun.findFirst({
+        where: {
+          id: reviewRunId,
+          tenantId: tenant.id,
+        },
+        include: {
+          mergeRequest: {
+            include: {
+              repository: true,
+            },
+          },
+        },
+      });
+
+      if (!reviewRun) {
+        return reply.code(404).send({
+          error: 'Review run not found',
+          message: `Review run with id ${reviewRunId} not found for tenant ${tenant.slug}`,
+        });
+      }
+
+      // Only allow retry if status is FAILED
+      if (reviewRun.status !== 'FAILED') {
+        return reply.code(400).send({
+          error: 'Invalid status',
+          message: `Cannot retry review run with status ${reviewRun.status}. Only FAILED review runs can be retried.`,
+        });
+      }
+
+      // Get repository provider info
+      const repository = reviewRun.mergeRequest.repository;
+      if (repository.provider !== 'gitlab') {
+        return reply.code(400).send({
+          error: 'Unsupported provider',
+          message: `Retry is only supported for GitLab repositories`,
+        });
+      }
+
+      const projectId = repository.providerRepoId;
+      if (!projectId) {
+        return reply.code(400).send({
+          error: 'Missing project ID',
+          message: 'Repository does not have a provider project ID',
+        });
+      }
+
+      // Reset review run to QUEUED and clear error/results
+      const updatedReviewRun = await prisma.reviewRun.update({
+        where: { id: reviewRunId },
+        data: {
+          status: 'QUEUED',
+          error: null,
+          startedAt: null,
+          finishedAt: null,
+          score: null,
+          summary: null,
+          phase: null,
+          progressMessage: null,
+        },
+      });
+
+      logger.info(
+        {
+          event: 'review_run.retry.reset',
+          reviewRunId: updatedReviewRun.id,
+          oldStatus: 'FAILED',
+          newStatus: 'QUEUED',
+        },
+        'Review run reset to QUEUED for retry'
+      );
+
+      // Enqueue job with the same reviewRunId
+      const jobPayload: ReviewMrJobPayload = {
+        tenantSlug: tenant.slug,
+        provider: 'gitlab',
+        projectId,
+        mrIid: reviewRun.mergeRequest.iid,
+        headSha: reviewRun.headSha,
+        isMergedCandidate: false,
+        reviewRunId: reviewRun.id, // CRITICAL: Use same reviewRunId for retry
+      };
+
+      const jobId = await enqueueReviewJob(jobPayload);
+
+      logger.info(
+        {
+          event: 'review_run.retry.enqueued',
+          reviewRunId: reviewRun.id,
+          jobId,
+        },
+        'Review run retry job enqueued'
+      );
+
+      return {
+        ok: true,
+        reviewRunId: reviewRun.id,
+        jobId,
+        status: 'QUEUED',
+      };
+    } catch (error: unknown) {
+      const err = error as { statusCode?: number; message?: string };
+      logger.error(
+        {
+          event: 'review_run.retry.error',
+          error: err.message,
+          statusCode: err.statusCode,
+          reviewRunId,
+        },
+        'Error retrying review run'
+      );
+
+      return reply.code(500).send({
+        error: 'Internal server error',
+        message: 'Failed to retry review run',
       });
     }
   });
@@ -1962,6 +2111,103 @@ async function startServer(): Promise<void> {
       return reply.code(500).send({
         error: 'Internal server error',
         message: 'Failed to trigger review',
+      });
+    }
+  });
+
+  // GitLab project resolver endpoint (protected by portal auth)
+  fastify.get<{
+    Querystring: {
+      path: string;
+    };
+  }>('/gitlab/resolve-project', {
+    preHandler: portalAuthPreHandler,
+  }, async (request, reply) => {
+    const logger = request.log;
+    const tenantSlugHeader = request.headers['x-mrp-tenant-slug'] as string | undefined;
+    const tenantSlug = tenantSlugHeader || process.env.DEFAULT_TENANT_SLUG || 'dev';
+    const projectPath = request.query.path;
+
+    if (!projectPath) {
+      return reply.code(400).send({
+        error: 'Missing path parameter',
+        message: 'path query parameter is required',
+      });
+    }
+
+    logger.info(
+      {
+        event: 'gitlab.resolve_project.start',
+        tenantSlug,
+        projectPath,
+      },
+      'Resolving GitLab project path to projectId'
+    );
+
+    try {
+      const gitlabBaseUrl = process.env.GITLAB_BASE_URL || 'https://gitlab.com';
+      const gitlabToken = process.env.GITLAB_TOKEN;
+      
+      if (!gitlabToken) {
+        return reply.code(500).send({
+          error: 'GitLab configuration error',
+          message: 'GITLAB_TOKEN not configured',
+        });
+      }
+
+      const gitlabClient = createGitLabClient({
+        baseUrl: gitlabBaseUrl,
+        token: gitlabToken,
+      });
+
+      const project = await gitlabClient.getProject(projectPath);
+
+      logger.info(
+        {
+          event: 'gitlab.resolve_project.success',
+          projectPath,
+          projectId: project.id,
+          projectName: project.name,
+        },
+        'Project resolved successfully'
+      );
+
+      return {
+        projectId: String(project.id),
+        name: project.name,
+        path: project.path,
+        pathWithNamespace: project.path_with_namespace,
+        namespace: project.namespace.name,
+      };
+    } catch (error: unknown) {
+      const err = error as { statusCode?: number; message?: string };
+      logger.error(
+        {
+          event: 'gitlab.resolve_project.error',
+          error: err.message,
+          statusCode: err.statusCode,
+          projectPath,
+        },
+        'Error resolving GitLab project'
+      );
+
+      if (err.statusCode === 404) {
+        return reply.code(404).send({
+          error: 'Project not found',
+          message: `Project "${projectPath}" not found in GitLab`,
+        });
+      }
+
+      if (err.statusCode === 401 || err.statusCode === 403) {
+        return reply.code(502).send({
+          error: 'GitLab authentication failed',
+          message: 'Unable to authenticate with GitLab API',
+        });
+      }
+
+      return reply.code(500).send({
+        error: 'Internal server error',
+        message: 'Failed to resolve project',
       });
     }
   });
