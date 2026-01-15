@@ -4,13 +4,14 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, getStoredConfig, getApiBaseUrl } from '@/lib/api-client';
+import AuthGate from '@/components/AuthGate';
 
 type ReviewRun = Awaited<ReturnType<typeof api.getReviewRun>>;
 type MergeRequestMeta = Awaited<ReturnType<typeof api.getMergeRequest>>;
 
 type CheckResultFilter = 'all' | 'FAIL' | 'WARN' | 'PASS' | 'BLOCKER';
 
-export default function ReviewDetailPage() {
+function ReviewDetailPageContent() {
   const params = useParams();
   const router = useRouter();
   
@@ -1178,6 +1179,14 @@ export default function ReviewDetailPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ReviewDetailPage() {
+  return (
+    <AuthGate>
+      <ReviewDetailPageContent />
+    </AuthGate>
   );
 }
 

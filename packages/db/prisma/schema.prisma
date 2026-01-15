@@ -27,8 +27,25 @@ model Tenant {
   aiSuggestions AiSuggestion[]
   tenantSettings TenantSettings?
   uploads Upload[]
+  users User[]
+  tenantGitlabConfig TenantGitlabConfig?
+  tenantWebhookConfigs TenantWebhookConfig[]
 
   @@map("tenants")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email        String
+  passwordHash String
+  role         String   @default("MEMBER") // "OWNER" | "ADMIN" | "MEMBER"
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([tenantId, email])
+  @@map("users")
 }
 
 model Repository {
@@ -239,4 +256,31 @@ enum UploadStatus {
   PRESIGNED
   UPLOADED
   FAILED
+}
+
+model TenantGitlabConfig {
+  id          String   @id @default(cuid())
+  tenantId    String   @unique
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  token       String   // Encrypted GitLab token
+  baseUrl     String   @default("https://gitlab.com")
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("tenant_gitlab_configs")
+}
+
+model TenantWebhookConfig {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider    String   // "gitlab" | "github" (future)
+  secret      String   // Webhook secret for validation
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, provider])
+  @@map("tenant_webhook_configs")
 }

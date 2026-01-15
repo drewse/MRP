@@ -33,7 +33,14 @@ import {
   completeUpload,
   listUploads,
 } from './tenant-routes.js';
+import {
+  getGitLabConfig,
+  updateGitLabConfig,
+  testGitLabConfig,
+} from './gitlab-config-routes.js';
 import { constantTimeCompare } from './webhook.js';
+import { login, logout, getMe } from './auth-routes.js';
+import { resolveTenantFromRequest, requireAuth } from './tenant-auth.js';
 
 // Environment validation
 const requiredEnvVars = [
@@ -519,6 +526,19 @@ async function startServer(): Promise<void> {
   // Health check endpoint
   fastify.get('/health', async () => {
     return { ok: true, timestamp: new Date().toISOString() };
+  });
+
+  // Auth endpoints (public)
+  fastify.post('/auth/login', async (request, reply) => {
+    return login(request, reply);
+  });
+
+  fastify.post('/auth/logout', async (request, reply) => {
+    return logout(request, reply);
+  });
+
+  fastify.get('/auth/me', async (request, reply) => {
+    return getMe(request, reply);
   });
 
   // Debug endpoint for environment diagnostics (dev only or if explicitly enabled)
@@ -1021,6 +1041,50 @@ async function startServer(): Promise<void> {
   fastify.get('/uploads', {
     preHandler: portalAuthPreHandler,
   }, listUploads);
+
+  // GitLab configuration endpoints (require JWT auth)
+  fastify.get('/tenant/gitlab-config', {
+    preHandler: async (request, reply) => {
+      // Allow both JWT and header-based auth for backward compatibility
+      await portalAuthPreHandler(request, reply);
+    },
+  }, async (request, reply) => {
+    return getGitLabConfig(request, reply);
+  });
+
+  fastify.put<{
+    Body: {
+      token?: string;
+      baseUrl?: string;
+      enabled?: boolean;
+    };
+  }>('/tenant/gitlab-config', {
+    preHandler: async (request, reply) => {
+      // Allow both JWT and header-based auth for backward compatibility
+      await portalAuthPreHandler(request, reply);
+    },
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          token: { type: 'string' },
+          baseUrl: { type: 'string' },
+          enabled: { type: 'boolean' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    return updateGitLabConfig(request, reply);
+  });
+
+  fastify.post('/tenant/gitlab-config/test', {
+    preHandler: async (request, reply) => {
+      // Allow both JWT and header-based auth for backward compatibility
+      await portalAuthPreHandler(request, reply);
+    },
+  }, async (request, reply) => {
+    return testGitLabConfig(request, reply);
+  });
 
   // Review runs endpoint (protected by portal auth)
   fastify.get<{
@@ -2213,7 +2277,7 @@ async function startServer(): Promise<void> {
     }
   });
 
-  // GitLab webhook endpoint
+  // GitLab webhook endpoint (public, authenticated via secret)
   fastify.post('/webhooks/gitlab', async (request, reply) => {
     return handleGitLabWebhook(request, reply);
   });

@@ -29,7 +29,7 @@ interface MergeRequest {
   } | null;
 }
 
-export default function ReviewsPage() {
+function ReviewsPageContent() {
   const router = useRouter();
   const [mergeRequests, setMergeRequests] = useState<MergeRequest[]>([]);
   const [loading, setLoading] = useState(true);

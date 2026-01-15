@@ -69,6 +69,86 @@ export async function getOrCreateTenantBySlug(slug: string): Promise<Tenant> {
 }
 
 /**
+ * Ensure TenantWebhookConfig exists for a tenant (idempotent)
+ * Creates with auto-generated secret if missing
+ * @param tenantId - Tenant ID (CUID)
+ * @returns Webhook secret
+ */
+export async function ensureTenantWebhookConfig(tenantId: string, provider: string = 'gitlab'): Promise<string> {
+  try {
+    const existing = await prisma.tenantWebhookConfig.findUnique({
+      where: {
+        tenantId_provider: {
+          tenantId,
+          provider,
+        },
+      },
+    });
+
+    if (existing) {
+      return existing.secret;
+    }
+
+    // Generate a secure random secret (32 bytes, base64url encoded)
+    const crypto = await import('crypto');
+    const secret = crypto.randomBytes(32).toString('base64url');
+
+    await prisma.tenantWebhookConfig.create({
+      data: {
+        tenantId,
+        provider,
+        secret,
+        enabled: true,
+      },
+    });
+
+    logger.info(
+      { event: 'tenant.webhook_config.auto_provisioned', tenantId, provider },
+      'Auto-provisioned TenantWebhookConfig with generated secret'
+    );
+
+    return secret;
+  } catch (error) {
+    const err = error as Error;
+    logger.warn(
+      { event: 'tenant.webhook_config.auto_provision_failed', tenantId, provider, error: err.message },
+      'Failed to auto-provision TenantWebhookConfig (non-fatal)'
+    );
+    throw err;
+  }
+}
+
+/**
+ * Get tenant by webhook secret
+ * @param secret - Webhook secret
+ * @param provider - Provider name (default: 'gitlab')
+ * @returns Tenant ID if found, null otherwise
+ */
+export async function getTenantByWebhookSecret(secret: string, provider: string = 'gitlab'): Promise<string | null> {
+  try {
+    const config = await prisma.tenantWebhookConfig.findFirst({
+      where: {
+        provider,
+        secret,
+        enabled: true,
+      },
+      select: {
+        tenantId: true,
+      },
+    });
+
+    return config?.tenantId || null;
+  } catch (error) {
+    const err = error as Error;
+    logger.error(
+      { event: 'tenant.webhook_secret.lookup.failed', provider, error: err.message },
+      'Failed to lookup tenant by webhook secret'
+    );
+    return null;
+  }
+}
+
+/**
  * Ensure TenantAiConfig exists for a tenant (idempotent)
  * Creates with enabled=true, model="gpt-4o-mini" if missing
  * Safe to call multiple times - uses upsert

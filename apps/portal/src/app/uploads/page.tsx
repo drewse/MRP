@@ -1,5 +1,7 @@
 'use client';
 
+import AuthGate from '@/components/AuthGate';
+
 import { useState, useEffect } from 'react';
 import { api, getStoredConfig, type TenantSettings } from '@/lib/api-client';
 
@@ -22,7 +24,7 @@ interface UploadProgress {
   uploadId?: string;
 }
 
-export default function UploadsPage() {
+function UploadsPageContent() {
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [loading, setLoading] = useState(true);
@@ -283,6 +285,14 @@ export default function UploadsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function UploadsPage() {
+  return (
+    <AuthGate>
+      <UploadsPageContent />
+    </AuthGate>
   );
 }
 

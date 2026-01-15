@@ -7,6 +7,8 @@ const STORAGE_KEYS = {
   TENANT_SLUG: 'mrp_portal_tenant_slug',
   ADMIN_TOKEN: 'mrp_portal_admin_token',
   API_BASE_URL: 'mrp_portal_api_base_url',
+  AUTH_TOKEN: 'auth_token',
+  USER: 'user',
 } as const;
 
 export interface ConnectionConfig {
@@ -126,6 +128,13 @@ function getAdminToken(): string {
   return process.env.NEXT_PUBLIC_PORTAL_ADMIN_TOKEN || '';
 }
 
+function getAuthToken(): string | null {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
+  }
+  return null;
+}
+
 export interface ApiError {
   error: string;
   message?: string;
@@ -146,21 +155,29 @@ async function apiRequest<T>(
     );
   }
   
-  const tenantSlug = getTenantSlug();
-  const adminToken = getAdminToken();
-
-  if (!tenantSlug) {
-    throw new Error('Tenant slug not configured');
-  }
-  if (!adminToken) {
-    throw new Error('Admin token not configured');
-  }
-
   const url = `${baseUrl}${path}`;
   const headers = new Headers(options.headers);
   headers.set('Content-Type', 'application/json');
-  headers.set('X-MRP-Tenant-Slug', tenantSlug);
-  headers.set('X-MRP-Admin-Token', adminToken);
+  
+  // Prefer JWT token if available (for authenticated users)
+  const authToken = getAuthToken();
+  if (authToken) {
+    headers.set('Authorization', `Bearer ${authToken}`);
+  } else {
+    // Fall back to header-based auth (backward compatibility)
+    const tenantSlug = getTenantSlug();
+    const adminToken = getAdminToken();
+
+    if (!tenantSlug) {
+      throw new Error('Tenant slug not configured');
+    }
+    if (!adminToken) {
+      throw new Error('Admin token not configured');
+    }
+
+    headers.set('X-MRP-Tenant-Slug', tenantSlug);
+    headers.set('X-MRP-Admin-Token', adminToken);
+  }
 
   // Dev-only: log request URL once per route (not spammy)
   if (process.env.NODE_ENV === 'development') {
@@ -455,6 +472,59 @@ export const api = {
     const queryString = queryParams.toString();
     const path = `/debug/activity${queryString ? `?${queryString}` : ''}`;
     return apiRequest(path, {}, signal);
+  },
+
+  async getMe(): Promise<{
+    user: {
+      id: string;
+      email: string;
+      role: string;
+      tenantId: string;
+      tenantSlug: string;
+    };
+  }> {
+    return apiRequest('/auth/me');
+  },
+
+  async getGitLabConfig(): Promise<{
+    token: string | null;
+    baseUrl: string;
+    enabled: boolean;
+    webhookUrl: string;
+    webhookSecret: string;
+  }> {
+    return apiRequest('/tenant/gitlab-config');
+  },
+
+  async updateGitLabConfig(config: {
+    token?: string;
+    baseUrl?: string;
+    enabled?: boolean;
+  }): Promise<{
+    token: string | null;
+    baseUrl: string;
+    enabled: boolean;
+    webhookUrl: string;
+    webhookSecret: string;
+  }> {
+    return apiRequest('/tenant/gitlab-config', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    });
+  },
+
+  async testGitLabConfig(): Promise<{
+    success: boolean;
+    message: string;
+    user?: {
+      id: number;
+      username: string;
+      name: string;
+    };
+  }> {
+    return apiRequest('/tenant/gitlab-config/test', {
+      method: 'POST',
+    });
   },
 };
 

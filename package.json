@@ -9,6 +9,7 @@
     "api:dev": "pnpm --filter api dev",
     "worker:dev": "pnpm --filter worker dev",
     "portal:dev": "pnpm --filter portal dev",
+    "marketing:dev": "pnpm --filter marketing dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "format": "prettier --write \"**/*.{ts,js,json,md}\"",

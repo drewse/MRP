@@ -1,9 +1,11 @@
 'use client';
 
+import AuthGate from '@/components/AuthGate';
+
 import { useState, useEffect } from 'react';
 import { api, getStoredConfig, type TenantSettings } from '@/lib/api-client';
 
-export default function SettingsPage() {
+function SettingsPageContent() {
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -148,6 +150,14 @@ export default function SettingsPage() {
         </button>
       </form>
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <AuthGate>
+      <SettingsPageContent />
+    </AuthGate>
   );
 }
 

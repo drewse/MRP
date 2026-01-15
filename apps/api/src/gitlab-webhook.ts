@@ -1,9 +1,12 @@
-import { prisma, getOrCreateTenantBySlug } from '@mrp/db';
+import { prisma, getTenantByWebhookSecret } from '@mrp/db';
 import { enqueueReviewJob } from './queue.js';
 import { constantTimeCompare } from './webhook.js';
 import { recordActivity } from './activity-buffer.js';
 import type { ReviewMrJobPayload } from '@mrp/core';
 import type { FastifyRequest, FastifyReply } from 'fastify';
+import pino from 'pino';
+
+const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 // GitLab webhook payload types (minimal, only what we need)
 interface GitLabWebhookPayload {
@@ -166,7 +169,6 @@ export async function handleGitLabWebhook(
   // Extract headers
   const gitlabToken = headers['x-gitlab-token'] as string | undefined;
   const gitlabEvent = headers['x-gitlab-event'] as string | undefined;
-  const tenantSlugHeader = headers['x-mrp-tenant-slug'] as string | undefined;
 
   // Extract fields early for logging
   const fields = extractMrFields(payload);
@@ -197,49 +199,65 @@ export async function handleGitLabWebhook(
     detail: action ? `Action: ${action}` : null,
   });
 
-  // Verify webhook secret
-  const expectedSecret = process.env.GITLAB_WEBHOOK_SECRET;
-  if (!expectedSecret) {
+  // Resolve tenant by webhook secret
+  // GitLab sends secret in X-Gitlab-Token header, or we can check query param as fallback
+  const webhookSecret = gitlabToken || (request.query as { secret?: string }).secret;
+  
+  if (!webhookSecret) {
     logger.error({
       event: 'webhook.auth.failed',
-      reason: 'GITLAB_WEBHOOK_SECRET not configured',
-      headerName: 'X-Gitlab-Token',
-      hint: 'Set GITLAB_WEBHOOK_SECRET in .env file and configure the same value in GitLab webhook settings',
+      reason: 'Missing webhook secret',
+      hint: 'Configure GitLab webhook to send X-Gitlab-Token header with your tenant webhook secret',
     });
     return reply.code(401).send({ 
       ok: false, 
-      error: 'Webhook secret not configured',
-      hint: 'Set GITLAB_WEBHOOK_SECRET in .env file',
+      error: 'Missing webhook secret',
+      hint: 'Configure GitLab webhook to send X-Gitlab-Token header with your tenant webhook secret',
     });
   }
 
-  if (!gitlabToken) {
+  // Look up tenant by secret
+  const tenantId = await getTenantByWebhookSecret(webhookSecret, 'gitlab');
+  
+  if (!tenantId) {
     logger.error({
       event: 'webhook.auth.failed',
-      reason: 'Missing X-Gitlab-Token header',
-      headerName: 'X-Gitlab-Token',
-      hint: 'Configure GitLab webhook to send X-Gitlab-Token header with value matching GITLAB_WEBHOOK_SECRET',
+      reason: 'Invalid webhook secret',
+      hint: 'Webhook secret does not match any tenant configuration. Check your webhook secret in the portal settings.',
     });
     return reply.code(401).send({ 
       ok: false, 
-      error: 'Missing X-Gitlab-Token header',
-      hint: 'Configure GitLab webhook to send X-Gitlab-Token header',
+      error: 'Invalid webhook secret',
+      hint: 'Webhook secret does not match any tenant configuration. Check your webhook secret in the portal settings.',
     });
   }
 
-  if (!constantTimeCompare(gitlabToken, expectedSecret)) {
+  // Get tenant to use in processing
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { id: true, slug: true },
+  });
+
+  if (!tenant) {
     logger.error({
       event: 'webhook.auth.failed',
-      reason: 'Token mismatch',
-      headerName: 'X-Gitlab-Token',
-      hint: 'X-Gitlab-Token header value does not match GITLAB_WEBHOOK_SECRET. Verify both values match.',
+      reason: 'Tenant not found',
+      tenantId,
     });
     return reply.code(401).send({ 
       ok: false, 
-      error: 'Invalid webhook token',
-      hint: 'X-Gitlab-Token header value does not match GITLAB_WEBHOOK_SECRET',
+      error: 'Tenant not found',
     });
   }
+
+  logger.info(
+    {
+      event: 'webhook.auth.success',
+      tenantId: tenant.id,
+      tenantSlug: tenant.slug,
+    },
+    'Webhook authenticated via tenant secret'
+  );
 
   // Only handle Merge Request Hook events
   if (gitlabEvent !== 'Merge Request Hook' && gitlabEvent !== 'merge_request') {
@@ -318,18 +336,8 @@ export async function handleGitLabWebhook(
   }
 
   try {
-    // Resolve tenant
-    const tenantSlug = tenantSlugHeader || process.env.DEFAULT_TENANT_SLUG || 'dev';
-    const tenant = await getOrCreateTenantBySlug(tenantSlug);
-
-    logger.info(
-      {
-        event: 'tenant.resolved',
-        tenantId: tenant.id,
-        tenantSlug: tenant.slug,
-      },
-      'Tenant resolved'
-    );
+    // Tenant already resolved from webhook secret above
+    // Use that tenant for processing
 
     // Extract repo info
     const repoInfo = extractRepoInfo(payload.project);

@@ -1,0 +1,12 @@
+[phases.setup]
+nixPkgs = ["nodejs-22.x"]
+
+[phases.install]
+cmds = ["npm install -g pnpm@10.26.1", "export PATH=\"$(npm bin -g):$PATH\"", "pnpm install --frozen-lockfile"]
+
+[phases.build]
+cmds = ["export PATH=\"$(npm bin -g):$PATH\"", "cd apps/marketing && pnpm build"]
+
+[start]
+cmd = "export PATH=\"$(npm bin -g):$PATH\" && cd apps/marketing && pnpm start"
+

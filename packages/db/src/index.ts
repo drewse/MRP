@@ -83,7 +83,7 @@ export type { Prisma } from '@prisma/client';
 export { PrismaClient } from '@prisma/client';
 
 // Re-export tenant helpers
-export { getOrCreateTenantBySlug, type Tenant } from './tenant.js';
+export { getOrCreateTenantBySlug, type Tenant, ensureTenantWebhookConfig, getTenantByWebhookSecret } from './tenant.js';
 
 /**
  * Check database connection health
