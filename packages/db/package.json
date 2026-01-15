@@ -12,7 +12,8 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "generate": "prisma generate",
+    "build": "prisma generate && tsc",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
