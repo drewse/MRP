@@ -96,7 +96,7 @@ export default function HomePage() {
               </h3>
               <p className="text-gray-600">
                 Leverage AI to catch subtle bugs, suggest improvements, and learn from
-                your codebase's best practices.
+                your codebase&apos;s best practices.
               </p>
             </div>
 
