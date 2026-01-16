@@ -161,11 +161,12 @@ async function apiRequest<T>(
   
   // Prefer JWT token if available (for authenticated users)
   const authToken = getAuthToken();
+  let tenantSlug: string | null = null;
   if (authToken) {
     headers.set('Authorization', `Bearer ${authToken}`);
   } else {
     // Fall back to header-based auth (backward compatibility)
-    const tenantSlug = getTenantSlug();
+    tenantSlug = getTenantSlug();
     const adminToken = getAdminToken();
 
     if (!tenantSlug) {
@@ -187,7 +188,7 @@ async function apiRequest<T>(
       path,
       baseUrl,
       hasSignal: !!signal,
-      tenantSlug,
+      tenantSlug: tenantSlug || 'N/A (JWT)',
     });
   }
 

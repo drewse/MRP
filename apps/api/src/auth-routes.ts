@@ -4,7 +4,7 @@
 
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '@mrp/db';
-import { createHash, randomBytes } from 'crypto';
+import { createHash } from 'crypto';
 import pino from 'pino';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });

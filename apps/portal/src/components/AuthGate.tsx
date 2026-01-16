@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { getToken, getUser } from '@/lib/auth';
+import { getToken } from '@/lib/auth';
 import { api } from '@/lib/api-client';
 
 interface AuthGateProps {

@@ -40,7 +40,6 @@ import {
 } from './gitlab-config-routes.js';
 import { constantTimeCompare } from './webhook.js';
 import { login, logout, getMe } from './auth-routes.js';
-import { resolveTenantFromRequest, requireAuth } from './tenant-auth.js';
 
 // Environment validation
 const requiredEnvVars = [

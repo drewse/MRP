@@ -5,7 +5,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { prisma, ensureTenantWebhookConfig } from '@mrp/db';
 import { createGitLabClient } from '@mrp/gitlab';
-import { requireAuth, resolveTenantFromRequest } from './tenant-auth.js';
+import { requireAuth } from './tenant-auth.js';
 import pino from 'pino';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });

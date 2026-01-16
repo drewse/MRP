@@ -1,12 +1,8 @@
 import { prisma, getTenantByWebhookSecret } from '@mrp/db';
 import { enqueueReviewJob } from './queue.js';
-import { constantTimeCompare } from './webhook.js';
 import { recordActivity } from './activity-buffer.js';
 import type { ReviewMrJobPayload } from '@mrp/core';
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import pino from 'pino';
-
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 // GitLab webhook payload types (minimal, only what we need)
 interface GitLabWebhookPayload {

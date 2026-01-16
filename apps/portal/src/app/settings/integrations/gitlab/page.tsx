@@ -295,7 +295,7 @@ function GitLabIntegrationPageContent() {
               </button>
             </div>
             <p className="mt-1 text-sm text-gray-500">
-              Use this secret as the <code className="bg-gray-100 px-1 rounded">X-Gitlab-Token</code> header value in your GitLab webhook configuration.
+              Use this secret as the <code className="bg-gray-100 px-1 rounded">&quot;X-Gitlab-Token&quot;</code> header value in your GitLab webhook configuration.
             </p>
           </div>
 
