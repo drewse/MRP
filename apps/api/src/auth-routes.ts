@@ -201,7 +201,7 @@ export async function getMe(request: FastifyRequest, reply: FastifyReply): Promi
  * GET /auth/bootstrap - One-time bootstrap endpoint to create admin user
  * Only enabled when ALLOW_BOOTSTRAP=true
  */
-export async function bootstrap(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+export async function bootstrap(_request: FastifyRequest, reply: FastifyReply): Promise<void> {
   // Check if bootstrap is enabled
   if (process.env.ALLOW_BOOTSTRAP !== 'true') {
     logger.info({ event: 'auth.bootstrap.denied', reason: 'ALLOW_BOOTSTRAP not set to true' });
