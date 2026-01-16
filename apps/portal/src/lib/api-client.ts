@@ -165,6 +165,13 @@ async function apiRequest<T>(
   if (authToken) {
     headers.set('Authorization', `Bearer ${authToken}`);
   } else {
+    // Dev-only: log when token is missing
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('[API Client] Auth token missing, falling back to header-based auth', {
+        path,
+        url,
+      });
+    }
     // Fall back to header-based auth (backward compatibility)
     tenantSlug = getTenantSlug();
     const adminToken = getAdminToken();
