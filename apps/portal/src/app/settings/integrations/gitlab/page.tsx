@@ -310,7 +310,7 @@ function GitLabIntegrationPageContent() {
                   <li>Merge request events</li>
                 </ul>
               </li>
-              <li>Click "Add webhook"</li>
+              <li>Click &quot;Add webhook&quot;</li>
             </ol>
           </div>
         </div>
