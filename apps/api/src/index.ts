@@ -39,7 +39,7 @@ import {
   testGitLabConfig,
 } from './gitlab-config-routes.js';
 import { constantTimeCompare } from './webhook.js';
-import { login, logout, getMe } from './auth-routes.js';
+import { login, logout, getMe, bootstrap } from './auth-routes.js';
 
 // Environment validation
 const requiredEnvVars = [
@@ -538,6 +538,10 @@ async function startServer(): Promise<void> {
 
   fastify.get('/auth/me', async (request, reply) => {
     return getMe(request, reply);
+  });
+
+  fastify.get('/auth/bootstrap', async (request, reply) => {
+    return bootstrap(request, reply);
   });
 
   // Debug endpoint for environment diagnostics (dev only or if explicitly enabled)

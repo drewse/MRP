@@ -3,7 +3,7 @@
  */
 
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { prisma } from '@mrp/db';
+import { prisma, getOrCreateTenantBySlug } from '@mrp/db';
 import { createHash } from 'crypto';
 import pino from 'pino';
 
@@ -193,6 +193,77 @@ export async function getMe(request: FastifyRequest, reply: FastifyReply): Promi
     return reply.code(500).send({
       error: 'Internal Server Error',
       message: 'An error occurred',
+    });
+  }
+}
+
+/**
+ * GET /auth/bootstrap - One-time bootstrap endpoint to create admin user
+ * Only enabled when ALLOW_BOOTSTRAP=true
+ */
+export async function bootstrap(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  // Check if bootstrap is enabled
+  if (process.env.ALLOW_BOOTSTRAP !== 'true') {
+    logger.info({ event: 'auth.bootstrap.denied', reason: 'ALLOW_BOOTSTRAP not set to true' });
+    return reply.code(404).send({
+      error: 'Not Found',
+      message: 'Endpoint not found',
+    });
+  }
+
+  const email = 'admin@quickiter.com';
+  const password = 'admin123';
+  const tenantSlug = 'dev';
+
+  try {
+    logger.info({ event: 'auth.bootstrap.start', email, tenantSlug }, 'Bootstrap endpoint called');
+
+    // Ensure tenant "dev" exists
+    const tenant = await getOrCreateTenantBySlug(tenantSlug);
+    logger.info({ event: 'auth.bootstrap.tenant', tenantId: tenant.id, tenantSlug }, 'Tenant ensured');
+
+    // Hash password using same logic as login (no salt for seeded users)
+    const passwordHash = createHash('sha256').update(password).digest('hex');
+
+    // Upsert admin user
+    const user = await prisma.user.upsert({
+      where: {
+        tenantId_email: {
+          tenantId: tenant.id,
+          email: email.toLowerCase().trim(),
+        },
+      },
+      create: {
+        email: email.toLowerCase().trim(),
+        passwordHash,
+        role: 'ADMIN',
+        tenantId: tenant.id,
+      },
+      update: {
+        passwordHash,
+        role: 'ADMIN',
+      },
+      include: {
+        tenant: true,
+      },
+    });
+
+    logger.info(
+      { event: 'auth.bootstrap.success', userId: user.id, email, tenantSlug, tenantId: tenant.id },
+      'Admin user bootstrapped successfully'
+    );
+
+    return reply.send({
+      ok: true,
+      email: user.email,
+      tenantSlug: user.tenant.slug,
+    });
+  } catch (error) {
+    const err = error as Error;
+    logger.error({ event: 'auth.bootstrap.error', error: err.message, stack: err.stack }, 'Bootstrap error');
+    return reply.code(500).send({
+      error: 'Internal Server Error',
+      message: 'Failed to bootstrap admin user',
     });
   }
 }
