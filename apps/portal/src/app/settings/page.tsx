@@ -34,10 +34,11 @@ function SettingsPageContent() {
       setAllowedExtensions(data.allowedExtensions.join(', '));
       setMaxFileSizeMB(Math.round(data.maxFileSizeBytes / (1024 * 1024)));
       setAllowedMimePrefixes(data.allowedMimePrefixes.join(', '));
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorObj = error as { message?: string };
       setMessage({
         type: 'error',
-        text: error.message || 'Failed to load settings',
+        text: errorObj.message || 'Failed to load settings',
       });
     } finally {
       setLoading(false);
@@ -71,10 +72,11 @@ function SettingsPageContent() {
 
       setSettings(updated);
       setMessage({ type: 'success', text: 'Settings saved successfully!' });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorObj = error as { message?: string };
       setMessage({
         type: 'error',
-        text: error.message || 'Failed to save settings',
+        text: errorObj.message || 'Failed to save settings',
       });
     } finally {
       setSaving(false);

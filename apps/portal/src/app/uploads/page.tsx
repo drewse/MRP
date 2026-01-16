@@ -48,7 +48,7 @@ function UploadsPageContent() {
       ]);
       setSettings(settingsData);
       setUploads(uploadsData.uploads);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to load data:', error);
     } finally {
       setLoading(false);
@@ -155,10 +155,11 @@ function UploadsPageContent() {
       setTimeout(() => {
         loadData();
       }, 500);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorObj = error as { message?: string };
       updateProgress({
         status: 'error',
-        error: error.message || 'Upload failed',
+        error: errorObj.message || 'Upload failed',
       });
     }
   };

@@ -83,10 +83,11 @@ export default function ConnectPage() {
       // Test connection
       await api.getSettings();
       setMessage({ type: 'success', text: 'Connection successful!' });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorObj = error as { message?: string };
       setMessage({
         type: 'error',
-        text: error.message || 'Connection failed. Please check your settings.',
+        text: errorObj.message || 'Connection failed. Please check your settings.',
       });
     } finally {
       setTesting(false);

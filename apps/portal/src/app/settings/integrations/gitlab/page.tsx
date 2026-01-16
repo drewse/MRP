@@ -37,10 +37,11 @@ function GitLabIntegrationPageContent() {
         setTokenSaved(false);
         setToken('');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorObj = error as { message?: string };
       setMessage({
         type: 'error',
-        text: error.message || 'Failed to load GitLab configuration',
+        text: errorObj.message || 'Failed to load GitLab configuration',
       });
     } finally {
       setLoading(false);
@@ -72,10 +73,11 @@ function GitLabIntegrationPageContent() {
 
       // Reload config to get updated state
       await loadConfig();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorObj = error as { message?: string };
       setMessage({
         type: 'error',
-        text: error.message || 'Failed to save GitLab configuration',
+        text: errorObj.message || 'Failed to save GitLab configuration',
       });
     } finally {
       setSaving(false);
@@ -100,10 +102,11 @@ function GitLabIntegrationPageContent() {
           text: result.message || 'Connection test failed',
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorObj = error as { message?: string };
       setMessage({
         type: 'error',
-        text: error.message || 'Connection test failed',
+        text: errorObj.message || 'Connection test failed',
       });
     } finally {
       setTesting(false);

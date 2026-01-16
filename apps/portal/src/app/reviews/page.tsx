@@ -38,14 +38,15 @@ function ReviewsPageContent() {
         setMergeRequests(data.mergeRequests);
         setLastUpdated(new Date());
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorObj = err as { name?: string; message?: string };
       // Ignore abort errors
-      if (err.name === 'AbortError') return;
+      if (errorObj.name === 'AbortError') return;
       
       if (isMountedRef.current) {
         console.error('Failed to load merge requests:', err);
         setError(
-          err.message || 'Failed to load merge requests. Please check your connection.'
+          errorObj.message || 'Failed to load merge requests. Please check your connection.'
         );
       }
     } finally {
@@ -132,8 +133,9 @@ function ReviewsPageContent() {
         try {
           const resolved = await api.resolveGitLabProject(projectPath);
           finalProjectId = resolved.projectId;
-        } catch (err: any) {
-          setUrlError(`Failed to resolve project: ${err.message || 'Unknown error'}`);
+        } catch (err: unknown) {
+          const errorObj = err as { message?: string };
+          setUrlError(`Failed to resolve project: ${errorObj.message || 'Unknown error'}`);
           setProcessingUrl(false);
           return;
         }
@@ -153,9 +155,10 @@ function ReviewsPageContent() {
 
       // Navigate to review detail page
       router.push(`/reviews/${result.reviewRunId}`);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorObj = err as { message?: string };
       console.error('Failed to trigger review from URL:', err);
-      setUrlError(err.message || 'Failed to trigger review. Please try again.');
+      setUrlError(errorObj.message || 'Failed to trigger review. Please try again.');
       setProcessingUrl(false);
     }
   };
@@ -395,8 +398,9 @@ function RecentActivityPanel() {
       if (isMountedRef.current) {
         setActivities(data.activities);
       }
-    } catch (err: any) {
-      if (err.name === 'AbortError') return;
+    } catch (err: unknown) {
+      const errorObj = err as { name?: string };
+      if (errorObj.name === 'AbortError') return;
       
       if (isMountedRef.current) {
         // Non-blocking error - just log, don't show error state

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, getStoredConfig, getApiBaseUrl } from '@/lib/api-client';
@@ -43,7 +43,33 @@ function ReviewDetailPageContent() {
   const isInitialLoadRef = useRef(true);
   const timeUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const loadReviewRun = async (signal?: AbortSignal, isPolling = false) => {
+  const loadMrMeta = useCallback(async (projectId: string | null, mrIid: number, signal?: AbortSignal, isPolling = false) => {
+    if (!projectId) return;
+    
+    const seq = ++requestSeqRef.current;
+    
+    try {
+      const data = await api.getMergeRequest(projectId, mrIid, signal);
+      
+      // For initial load, always update. For polling, use seq guard.
+      const shouldUpdate = isMountedRef.current && (
+        !isPolling || seq === requestSeqRef.current
+      );
+      
+      if (shouldUpdate) {
+        setMrMeta(data);
+      }
+    } catch (err: unknown) {
+      const errorObj = err as { name?: string };
+      // Ignore abort errors
+      if (errorObj.name === 'AbortError' || signal?.aborted) return;
+      
+      // Silently fail - MR metadata is not critical
+      console.warn('Failed to load MR metadata:', err);
+    }
+  }, []);
+
+  const loadReviewRun = useCallback(async (signal?: AbortSignal, isPolling = false) => {
     const config = getStoredConfig();
     if (!config) {
       setError('Please configure your connection on the Connect page first.');
@@ -99,9 +125,10 @@ function ReviewDetailPageContent() {
         // Initial load failed seq check (shouldn't happen, but ensure loading ends)
         setLoading(false);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorObj = err as { name?: string; error?: string; message?: string };
       // Ignore abort errors silently (but ensure loading ends for initial load)
-      if (err.name === 'AbortError' || signal?.aborted) {
+      if (errorObj.name === 'AbortError' || signal?.aborted) {
         if (!isPolling && isMountedRef.current) {
           // Initial load was aborted - ensure loading state ends
           // (This shouldn't normally happen, but handle it gracefully)
@@ -116,9 +143,9 @@ function ReviewDetailPageContent() {
       );
       
       if (shouldUpdate) {
-        const errorMessage = err.error || err.message || 'Unknown error';
-        const httpStatus = err.message?.includes('HTTP') ? err.message : '';
-        const apiMessage = err.message || 'Failed to load review';
+        const errorMessage = errorObj.error || errorObj.message || 'Unknown error';
+        const httpStatus = errorObj.message?.includes('HTTP') ? errorObj.message : '';
+        const apiMessage = errorObj.message || 'Failed to load review';
         
         console.error('Failed to load review run:', {
           url,
@@ -147,7 +174,7 @@ function ReviewDetailPageContent() {
           setError(`Polling error: ${apiMessage}${httpStatus ? ` (${httpStatus})` : ''}`);
         } else {
           // Initial load error - replace everything
-          if (err.error === 'Not found' || err.message?.includes('404')) {
+          if (errorObj.error === 'Not found' || errorObj.message?.includes('404')) {
             setError('Review not found. It may have been deleted or you may not have access.');
           } else {
             setError(`${apiMessage}${httpStatus ? ` (${httpStatus})` : ''}`);
@@ -159,32 +186,7 @@ function ReviewDetailPageContent() {
         setLoading(false);
       }
     }
-  };
-
-  const loadMrMeta = async (projectId: string | null, mrIid: number, signal?: AbortSignal, isPolling = false) => {
-    if (!projectId) return;
-    
-    const seq = ++requestSeqRef.current;
-    
-    try {
-      const data = await api.getMergeRequest(projectId, mrIid, signal);
-      
-      // For initial load, always update. For polling, use seq guard.
-      const shouldUpdate = isMountedRef.current && (
-        !isPolling || seq === requestSeqRef.current
-      );
-      
-      if (shouldUpdate) {
-        setMrMeta(data);
-      }
-    } catch (err: any) {
-      // Ignore abort errors
-      if (err.name === 'AbortError' || signal?.aborted) return;
-      
-      // Silently fail - MR metadata is not critical
-      console.warn('Failed to load MR metadata:', err);
-    }
-  };
+  }, [reviewRunIdStr, error, reviewRun?.status, loadMrMeta]);
 
   // Initial load and cleanup - use normalized reviewRunIdStr as dependency
   useEffect(() => {
@@ -229,7 +231,7 @@ function ReviewDetailPageContent() {
       abortControllerRef.current?.abort();
       abortControllerRef.current = null;
     };
-  }, [reviewRunIdStr]);
+  }, [reviewRunIdStr, loadReviewRun]);
 
   // Polling effect: poll every 3s if status is QUEUED or RUNNING
   useEffect(() => {
@@ -331,7 +333,7 @@ function ReviewDetailPageContent() {
         timeUpdateIntervalRef.current = null;
       }
     };
-  }, [reviewRun?.status]);
+  }, [reviewRun, reviewRunIdStr]);
 
   const formatDate = (dateString: string): string => {
     return new Date(dateString).toLocaleString();
@@ -444,9 +446,10 @@ function ReviewDetailPageContent() {
       setTimeout(() => {
         setSuccessMessage(null);
       }, 3000);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorObj = err as { message?: string };
       console.error('Failed to trigger review:', err);
-      setError(err.message || 'Failed to trigger review. Please try again.');
+      setError(errorObj.message || 'Failed to trigger review. Please try again.');
     } finally {
       setTriggering(false);
     }
@@ -484,9 +487,10 @@ function ReviewDetailPageContent() {
       setTimeout(() => {
         setSuccessMessage(null);
       }, 3000);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorObj = err as { message?: string };
       console.error('Failed to retry review:', err);
-      setError(err.message || 'Failed to retry review. Please try again.');
+      setError(errorObj.message || 'Failed to retry review. Please try again.');
     } finally {
       setRetrying(false);
     }
