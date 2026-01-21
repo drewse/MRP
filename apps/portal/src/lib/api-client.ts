@@ -135,10 +135,125 @@ function getAuthToken(): string | null {
   return null;
 }
 
+/**
+ * Check if token is expired (local pre-check without verification)
+ * Only checks JWT-shaped tokens (base64url encoded with expiry field)
+ * Returns true only if token is JWT-shaped AND expired; false otherwise
+ * If decode fails or exp missing, returns false (let server verify)
+ */
+function isTokenExpired(token: string): boolean {
+  try {
+    // Only check JWT-shaped tokens (base64url encoded, custom format: userId:tenantId:expiry:signature)
+    // Check if it looks like base64url (no spaces, reasonable length)
+    if (!token || token.length < 10 || /[\s=]/.test(token)) {
+      return false; // Not JWT-shaped, let server verify
+    }
+    
+    // Decode base64url token
+    // Base64url uses - and _ instead of + and /, and may omit padding
+    let base64 = token.replace(/-/g, '+').replace(/_/g, '/');
+    // Add padding if needed
+    while (base64.length % 4) {
+      base64 += '=';
+    }
+    
+    const decoded = atob(base64);
+    const parts = decoded.split(':');
+    
+    // Need exactly userId:tenantId:expiry:signature (4 parts) for our custom JWT format
+    if (parts.length !== 4) {
+      return false; // Not our JWT format, let server verify
+    }
+    
+    const expiryStr = parts[2];
+    if (!expiryStr) {
+      return false; // Missing expiry, let server verify
+    }
+    
+    const expiry = parseInt(expiryStr, 10);
+    if (isNaN(expiry)) {
+      return false; // Invalid expiry format, let server verify
+    }
+    
+    // Check if expired or expires within 30 seconds
+    const now = Date.now();
+    const bufferMs = 30 * 1000; // 30 seconds buffer
+    return expiry < (now + bufferMs);
+  } catch {
+    // If decoding fails, don't auto-expire - let server verify
+    return false;
+  }
+}
+
+/**
+ * Memoized token hash prefix cache
+ * Maps token -> hash prefix to avoid recomputing for identical tokens
+ */
+const tokenHashCache = new Map<string, Promise<string>>();
+
+/**
+ * Generate SHA-256 hash prefix for token (safe for logging)
+ * Memoized: identical tokens return cached hash without recomputation
+ */
+async function getTokenHashPrefix(token: string): Promise<string> {
+  // Check cache first
+  const cached = tokenHashCache.get(token);
+  if (cached) {
+    return cached;
+  }
+  
+  // Create hash promise (never blocks request path)
+  const hashPromise = (async () => {
+    if (typeof window === 'undefined' || !crypto?.subtle) {
+      // Fallback for environments without crypto.subtle
+      return 'hash-unavailable';
+    }
+    
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(token);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      return hashHex.substring(0, 16); // First 16 chars of hash
+    } catch {
+      return 'hash-error';
+    }
+  })();
+  
+  // Cache the promise (not the result) to avoid race conditions
+  tokenHashCache.set(token, hashPromise);
+  
+  // Limit cache size to prevent memory leaks (keep last 100 tokens)
+  if (tokenHashCache.size > 100) {
+    const firstKey = tokenHashCache.keys().next().value;
+    tokenHashCache.delete(firstKey);
+  }
+  
+  return hashPromise;
+}
+
 export interface ApiError {
   error: string;
   message?: string;
   reasonCode?: string;
+  status?: number;
+}
+
+/**
+ * Authentication error (401 Unauthorized)
+ * Thrown when token is missing, invalid, or expired
+ */
+export class AuthError extends Error {
+  status: number;
+  code: string;
+
+  constructor(message: string, status: number = 401, code: string = 'UNAUTHORIZED') {
+    super(message);
+    this.name = 'AuthError';
+    this.status = status;
+    this.code = code;
+  }
 }
 
 async function apiRequest<T>(
@@ -162,14 +277,56 @@ async function apiRequest<T>(
   // Prefer JWT token if available (for authenticated users)
   const authToken = getAuthToken();
   let tenantSlug: string | null = null;
+  const isDev = process.env.NODE_ENV === 'development';
+  const enableDebugLogs = isDev || process.env.NEXT_PUBLIC_ENABLE_AUTH_DEBUG === 'true';
+  
   if (authToken) {
+    // Local expiry pre-check: if token looks expired, clear it before making request
+    if (isTokenExpired(authToken)) {
+      if (enableDebugLogs) {
+        console.debug('[API Client] Token expired locally, clearing auth before request', {
+          path,
+          url,
+        });
+      }
+      // Import clearAuth dynamically to avoid circular dependency
+      const { clearAuth } = await import('./auth');
+      clearAuth();
+      // Throw AuthError so caller knows auth was cleared
+      throw new AuthError('Token expired', 401, 'TOKEN_EXPIRED');
+    }
+    
     headers.set('Authorization', `Bearer ${authToken}`);
+    
+    // Debug logging for auth token (guarded by dev flag)
+    // Note: Hash is computed async but we don't await it to avoid blocking the request
+    if (enableDebugLogs) {
+      getTokenHashPrefix(authToken).then(hashPrefix => {
+        console.debug('[API Client] Using JWT token', {
+          path,
+          url,
+          tokenLength: authToken.length,
+          tokenHashPrefix: hashPrefix, // Safe hash prefix instead of token preview
+          hasAuthHeader: headers.has('Authorization'),
+        });
+      }).catch(() => {
+        // If hash fails, log without hash
+        console.debug('[API Client] Using JWT token', {
+          path,
+          url,
+          tokenLength: authToken.length,
+          tokenHashPrefix: 'hash-error',
+          hasAuthHeader: headers.has('Authorization'),
+        });
+      });
+    }
   } else {
     // Dev-only: log when token is missing
-    if (process.env.NODE_ENV === 'development') {
+    if (enableDebugLogs) {
       console.debug('[API Client] Auth token missing, falling back to header-based auth', {
         path,
         url,
+        storageKey: STORAGE_KEYS.AUTH_TOKEN,
       });
     }
     // Fall back to header-based auth (backward compatibility)
@@ -188,7 +345,7 @@ async function apiRequest<T>(
   }
 
   // Dev-only: log request URL once per route (not spammy)
-  if (process.env.NODE_ENV === 'development') {
+  if (isDev) {
     console.debug('[API Request]', {
       method: options.method || 'GET',
       url,
@@ -196,6 +353,7 @@ async function apiRequest<T>(
       baseUrl,
       hasSignal: !!signal,
       tenantSlug: tenantSlug || 'N/A (JWT)',
+      hasAuthHeader: headers.has('Authorization'),
     });
   }
 
@@ -206,7 +364,7 @@ async function apiRequest<T>(
   });
 
   // Dev-only: log response status
-  if (process.env.NODE_ENV === 'development') {
+  if (isDev) {
     console.debug('[API Response]', {
       url,
       status: response.status,
@@ -216,15 +374,75 @@ async function apiRequest<T>(
   }
 
   if (!response.ok) {
+    // Centralized 401 handling: clear auth and throw AuthError
+    // Only clear auth if Authorization header was present (authenticated request)
+    if (response.status === 401) {
+      const hadAuthHeader = headers.has('Authorization');
+      
+      // Only clear auth if we sent an Authorization header
+      // Public/unauthenticated requests returning 401 should not clear auth
+      if (hadAuthHeader) {
+        // Import clearAuth dynamically to avoid circular dependency
+        const { clearAuth } = await import('./auth');
+        clearAuth();
+      }
+      
+      let errorBody: any = null;
+      try {
+        errorBody = await response.json();
+      } catch {
+        // If response body can't be parsed, use default message
+      }
+      
+      const errorMessage = errorBody?.message || errorBody?.error || 'Unauthorized';
+      
+      // Debug logging for 401 errors
+      if (enableDebugLogs) {
+        // Compute hash async but don't block
+        const hashPromise = authToken ? getTokenHashPrefix(authToken) : Promise.resolve('no-token');
+        hashPromise.then(tokenHashPrefix => {
+          console.error('[API Client] Auth check failed (401):', {
+            error: errorBody || { error: 'Unauthorized' },
+            path,
+            url,
+            hadToken: !!authToken,
+            tokenHashPrefix,
+            responseStatus: response.status,
+            authHeaderPresent: hadAuthHeader,
+            authCleared: hadAuthHeader,
+          });
+        }).catch(() => {
+          console.error('[API Client] Auth check failed (401):', {
+            error: errorBody || { error: 'Unauthorized' },
+            path,
+            url,
+            hadToken: !!authToken,
+            tokenHashPrefix: 'hash-error',
+            responseStatus: response.status,
+            authHeaderPresent: hadAuthHeader,
+            authCleared: hadAuthHeader,
+          });
+        });
+      }
+      
+      throw new AuthError(errorMessage, 401, 'UNAUTHORIZED');
+    }
+    
+    // Handle other errors normally
     let error: ApiError;
+    let errorBody: any = null;
     try {
-      error = await response.json();
+      errorBody = await response.json();
+      error = errorBody;
     } catch {
       error = {
         error: 'Request failed',
         message: `HTTP ${response.status}: ${response.statusText}`,
       };
     }
+    
+    // Attach status code to error for easier handling
+    error.status = response.status;
     throw error;
   }
 
